@@ -35,7 +35,7 @@ table{border-collapse:collapse;width:100%;font-size:13.5px}th,td{border-bottom:1
 const $=s=>document.querySelector(s),E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid=()=>Math.random().toString(36).slice(2,9),shuf=a=>{a=[...a];for(let i=a.length;i>1;){const j=Math.random()*i--|0;[a[i],a[j]]=[a[j],a[i]]}return a};
 /* ====== PENGATURAN: tempel URL web app Apps Script (berakhiran /exec) ====== */
-const API_URL='GANTI_DENGAN_URL_WEB_APP_ANDA';
+const API_URL='https://script.google.com/macros/s/AKfycbwfuQTvmpDhsgv1dz3JpCxaaH2Q6XR2pSq5utMFt8RUmlnx1Z1zrGjwVIRacx90Du7H/exec';
 /* ======================================================================== */
 const seed=()=>({cfg:{nama:'CBT MTsN 3 Subang',ket:'Ujian Online Berbasis Komputer'},topik:[],soal:[],grp:[],pes:[],tes:[],token:{c:'',d:''},hasil:[]});
 let S=seed(),PUB={...S.cfg},AU=null,SNAP={},STAT='',TK='';
