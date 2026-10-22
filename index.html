@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CBT Ujian Online – MTsN 3 Subang</title>
+<style>
+:root{--bg:#f1f5f2;--cd:#fff;--tx:#1b2b22;--mu:#5c6e63;--pr:#1f7a4d;--p2:#e3f2ea;--bd:#d6e0d9;--er:#b3261e;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101813;--cd:#18231c;--tx:#e6efe9;--mu:#9bb0a3;--pr:#4cc489;--p2:#1d3a2b;--bd:#2c3d33;--er:#f2b8b5}}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:14.5px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.app{display:flex;min-height:100vh}.side{width:210px;background:var(--cd);border-right:1px solid var(--bd);padding:12px 8px;flex:none}
+.side h2{font-size:15px;margin:4px 8px 2px;color:var(--pr)}.side small{display:block;margin:0 8px 10px;color:var(--mu);font-size:11.5px}
+.side a{display:block;padding:7px 10px;border-radius:7px;cursor:pointer;color:var(--tx)}.side a.on{background:var(--p2);color:var(--pr);font-weight:600}
+.main{flex:1;padding:16px;min-width:0}.card{background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px;overflow-x:auto}
+h1{font-size:19px;margin:0 0 10px}h3{margin:0 0 8px}
+input,select,textarea{width:100%;padding:8px 9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+textarea{min-height:90px}label{display:block;font-size:12.5px;font-weight:600;color:var(--mu);margin:8px 0 3px}
+label.c{display:flex;gap:6px;align-items:center;font-weight:400;color:var(--tx);margin:3px 0}label.c input{width:auto}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--pr);background:var(--pr);color:#fff;padding:7px 13px;font-weight:600}
+button.s{background:transparent;color:var(--pr)}button.d{background:transparent;color:var(--er);border-color:var(--er)}button.x{padding:3px 8px;font-size:12.5px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}.row select{width:auto;min-width:160px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}th,td{border-bottom:1px solid var(--bd);padding:6px 8px;text-align:left;vertical-align:top}th{color:var(--mu);font-size:12px}
+.g4{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}.st{background:var(--p2);border-radius:10px;padding:12px}.st b{font-size:24px;display:block;color:var(--pr)}
+#md{position:fixed;inset:0;background:#0008;display:flex;align-items:flex-start;justify-content:center;padding:20px 12px;overflow:auto;z-index:20}#md[hidden]{display:none}
+.mb{background:var(--cd);border-radius:12px;padding:16px;width:100%;max-width:560px}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--p2);color:var(--pr)}.mu{color:var(--mu)}
+.num{display:flex;flex-wrap:wrap;gap:5px}.num button{width:36px;padding:5px 0;background:transparent;color:var(--tx);border-color:var(--bd)}.num button.a{background:var(--p2);border-color:var(--pr)}.num button.cur{background:var(--pr);color:#fff}
+.opt{display:flex;gap:8px;padding:10px;border:1px solid var(--bd);border-radius:9px;margin:7px 0;cursor:pointer}.opt.on{border-color:var(--pr);background:var(--p2)}
+.kartu{display:inline-block;border:1px solid #000;padding:10px;margin:6px;width:260px;color:#000;background:#fff;font-size:13px}
+@media (max-width:720px){.app{display:block}.side{width:auto;display:flex;overflow-x:auto;gap:4px;border-right:0;border-bottom:1px solid var(--bd)}.side h2,.side small{display:none}.side a{white-space:nowrap}}
+#ld{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;z-index:30}#ld[hidden]{display:none}
+@media print{.side,.no{display:none!important}.main{padding:0}}
+</style></head><body>
+<div id="root"></div><div id="md" hidden></div><div id="ld" hidden>Memproses…</div>
+<script>
+const $=s=>document.querySelector(s),E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9),shuf=a=>{a=[...a];for(let i=a.length;i>1;){const j=Math.random()*i--|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+/* ====== PENGATURAN: tempel URL web app Apps Script (berakhiran /exec) ====== */
+const API_URL='GANTI_DENGAN_URL_WEB_APP_ANDA';
+/* ======================================================================== */
+const seed=()=>({cfg:{nama:'CBT MTsN 3 Subang',ket:'Ujian Online Berbasis Komputer'},topik:[],soal:[],grp:[],pes:[],tes:[],token:{c:'',d:''},hasil:[]});
+let S=seed(),PUB={...S.cfg},AU=null,SNAP={},STAT='',TK='';
+const api=async b=>{try{const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(b)});return await r.json()}catch(e){return{ok:false,err:'Koneksi gagal. Periksa internet atau URL API. ('+(e.message||e)+')'}}};
+const busy=on=>{$('#ld').hidden=!on};
+const status=t=>{STAT=t;const e=$('#ss');if(e)e.textContent=t};
+const td=()=>new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Jakarta'});
+const TB=['topik','soal','grp','pes','tes','hasil'];
+function snap(){SNAP={};TB.forEach(t=>{SNAP[t]={};S[t].forEach(r=>{SNAP[t][r.id]=JSON.stringify(r)})});SNAP.cfg=JSON.stringify(S.cfg);SNAP.token=JSON.stringify(S.token)}
+let sq=Promise.resolve();
+function save(){if(!AU)return Promise.resolve();const ch={};
+TB.forEach(t=>{const up=[],ids={};S[t].forEach(r=>{ids[r.id]=1;if(SNAP[t][r.id]!==JSON.stringify(r))up.push(r)});const rm=Object.keys(SNAP[t]).filter(i=>!ids[i]);if(up.length||rm.length)ch[t]={up,rm}});
+if(SNAP.cfg!==JSON.stringify(S.cfg))ch.cfg=S.cfg;if(SNAP.token!==JSON.stringify(S.token))ch.token=S.token;
+if(!Object.keys(ch).length)return Promise.resolve();
+const na=ch.cfg?{u:S.cfg.au,p:S.cfg.ap||AU.p}:null;snap();status('Menyimpan…');
+return sq=sq.then(()=>api({action:'sync',auth:AU,ch})).then(r=>{if(r.ok){if(na)AU=na;status('Tersimpan ✓')}else{status('Gagal menyimpan');alert('Gagal menyimpan ke Google Sheets: '+r.err+'\nGunakan “Muat ulang data” lalu ulangi perubahan.')}})}
+async function loadAdmin(){busy(true);const r=await api({action:'alogin',u:AU.u,p:AU.p});busy(false);if(!r.ok){alert(r.err);return}S=r.S;snap();status('Data dimuat');render()}
+let mode='login',page='dash',adm=false,P=null,cur=null,sel={},tmr=null,pt=null;
+const gN=i=>(S.grp.find(x=>x.id===i)||{}).nama||'-',tN=i=>(S.topik.find(x=>x.id===i)||{}).nama||'-';
+const tbl=(h,r)=>`<table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${r.map(x=>`<tr>${x.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')||`<tr><td colspan=${h.length} class=mu>Belum ada data</td></tr>`}</table>`;
+const sv=(name,txt)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([name.endsWith('.csv')?'\ufeff'+txt:txt],{type:'text/plain;charset=utf-8'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)};
+const closeM=()=>{$('#md').hidden=true};
+function fld(f){const v=f.v??'',n=`name="${f.k}"`;let i;
+if(f.t==='select')i=`<select ${n}>${f.o.map(([a,b])=>`<option value="${E(a)}" ${a==v?'selected':''}>${E(b)}</option>`).join('')}</select>`;
+else if(f.t==='multi')return`<label>${f.l}</label>`+f.o.map(([a,b])=>`<label class=c><input type=checkbox ${n} value="${a}" ${(v||[]).includes(a)?'checked':''}>${E(b)}</label>`).join('');
+else if(f.t==='check')return`<label class=c><input type=checkbox ${n} ${v?'checked':''}>${f.l}</label>`;
+else if(f.t==='area')i=`<textarea ${n}>${E(v)}</textarea>`;else i=`<input ${n} type="${f.t||'text'}" value="${E(v)}">`;
+return`<label>${f.l}</label>${i}`}
+function form(title,fs,ok){const m=$('#md');m.innerHTML=`<div class=mb><h3>${title}</h3>${fs.map(fld).join('')}<div class=row><button id=okb>Simpan</button><button class=s onclick=closeM()>Batal</button></div></div>`;m.hidden=false;
+$('#okb').onclick=()=>{const o={};fs.forEach(f=>{const els=[...m.querySelectorAll(`[name="${f.k}"]`)];o[f.k]=f.t==='multi'?els.filter(e=>e.checked).map(e=>e.value):f.t==='check'?els[0].checked:els[0].value});if(ok(o)!==false){save();closeM();render()}}}
+const del=(arr,i,msg)=>{if(confirm(msg||'Hapus data ini?')){const k=S[arr].findIndex(x=>x.id===i);S[arr].splice(k,1);save();render()}};
+function go(p){if(p==='reload'){loadAdmin();return}page=p;render()}
+
+/* ---------- LOGIN ---------- */
+function loginView(){return`<div style="max-width:380px;margin:8vh auto;padding:12px"><div class=card><h1>📝 ${E(PUB.nama)}</h1><p class=mu>${E(PUB.ket)}</p>
+<label>Username</label><input id=lu><label>Password</label><input id=lp type=password onkeydown="if(event.key==='Enter')doLogin('p')">
+<div class=row><button onclick="doLogin('p')">Masuk sebagai Peserta</button></div><div class=row><button class=s onclick="doLogin('a')">Masuk Operator / Admin</button></div><div id=le class=mu></div>
+${API_URL.startsWith('GANTI')?'<p style="color:var(--er)">⚠ URL API belum diisi di file ini.</p>':''}</div></div>`}
+async function doLogin(t){const u=$('#lu').value.trim(),p=$('#lp').value;if(!u||!p){$('#le').textContent='Isi username dan password.';return}
+$('#le').textContent='Memeriksa…';
+if(t==='a'){const r=await api({action:'alogin',u,p});if(!r.ok){$('#le').textContent=r.err;return}S=r.S;AU={u,p};snap();status('');adm=true;mode='admin';page='dash';render();if(S.warn)alert(S.warn)}
+else{const r=await api({action:'plogin',u,p});if(!r.ok){$('#le').textContent=r.err;return}TK=r.tk;P={...r.pes,pw:p};S={cfg:r.cfg,topik:[],soal:[],grp:r.grp,pes:[],tes:r.tes,token:{},hasil:r.hasil};AU=null;mode='peserta';cur=null;render()}}
+const logout=()=>{adm=false;P=null;cur=null;AU=null;TK='';clearInterval(tmr);clearTimeout(pt);S=seed();S.cfg={...PUB};mode='login';render()};
+
+/* ---------- ADMIN ---------- */
+const NAV=[['dash','Dashboard'],['topik','Topik'],['soal','Soal'],['imp','Import Soal'],['grp','Group'],['pes','Peserta'],['impp','Import Peserta'],['kartu','Cetak Kartu'],['tes','Daftar Tes'],['token','Token'],['hasil','Hasil Tes'],['rekap','Rekap & Analisis'],['set','Pengaturan & Backup'],['reload','⟳ Muat ulang data']];
+function adminView(){return`<div class=app><div class=side><h2>${E(S.cfg.nama)}</h2><small>Panel Administrator<br><span id=ss>${E(STAT)}</span></small>${NAV.map(([k,l])=>`<a class="${page===k?'on':''}" onclick="go('${k}')">${l}</a>`).join('')}<a onclick="logout()">⎋ Keluar</a></div><div class=main>${PG[page]()}</div></div>`}
+const topSel=k=>`<select onchange="sel.${k}=this.value;render()">${S.topik.map(t=>`<option value="${t.id}" ${sel[k]===t.id?'selected':''}>${E(t.nama)}</option>`).join('')}</select>`;
+const tsel=()=>{if(!sel.t||!S.topik.find(x=>x.id===sel.t))sel.t=(S.topik[0]||{}).id;return sel.t};
+const bt=(t,fn,c='s')=>`<button class="${c} x" onclick="${fn}">${t}</button>`;
+const PG={
+dash(){const fin=S.hasil.filter(h=>h.fin).length;return`<h1>Dashboard</h1><div class=g4>${[['Topik',S.topik.length],['Soal',S.soal.length],['Peserta',S.pes.length],['Tes',S.tes.length],['Ujian selesai',fin]].map(([a,b])=>`<div class=st><b>${b}</b>${a}</div>`).join('')}</div>
+<div class=card style="margin-top:12px"><h3>Alur kerja</h3><ol><li>Buat <b>Topik</b> lalu isi <b>Soal</b> (manual atau <b>Import</b>).</li><li>Buat <b>Group</b> (kelas) &amp; <b>Peserta</b>, cetak kartu.</li><li>Buat <b>Tes</b>, tambahkan soal dari topik, atur jadwal.</li><li>Bagikan <b>Token</b> saat ujian, pantau <b>Hasil Tes</b>, lalu <b>Rekap</b>.</li></ol>
+<p class=mu>Data tersimpan di Google Sheets. Klik “Muat ulang data” untuk melihat hasil ujian terbaru dari peserta.</p></div>`},
+topik(){return`<h1>Topik</h1><div class=card><div class=row>${bt('+ Tambah Topik',"tForm()",'')}</div>${tbl(['No','Nama','Deskripsi','Soal',''],S.topik.map((t,i)=>[i+1,E(t.nama),E(t.desk),S.soal.filter(s=>s.topik===t.id).length,bt('Edit',`tForm('${t.id}')`)+' '+bt('Hapus',`delTopik('${t.id}')`,'d')]))}</div>`},
+soal(){const t=tsel();return`<h1>Soal</h1><div class=card><div class=row>Topik: ${topSel('t')} ${bt('+ Tambah Soal',"sForm()",'')}</div>${tbl(['No','Soal','Jawaban Benar',''],S.soal.filter(s=>s.topik===t).map((s,i)=>[i+1,E(s.q),'ABCDE'[s.k]+'. '+E(s.o[s.k]),bt('Edit',`sForm('${s.id}')`)+' '+bt('Hapus',`del('soal','${s.id}')`,'d')]))}</div>`},
+imp(){const t=tsel();return`<h1>Import Soal</h1><div class=card><div class=row>Ke topik: ${topSel('t')}</div><p class=mu>Satu soal per baris: <code>Pertanyaan | Opsi A | Opsi B | Opsi C | Opsi D | Kunci(A-E)</code>. Bisa tempel dari Excel (kolom tab) atau unggah .txt/.csv.</p><textarea id=ti style="min-height:180px"></textarea><div class=row><input type=file accept=".txt,.csv" onchange="this.files[0].text().then(x=>$('#ti').value=x)" style="width:auto"><button onclick="impSoal()">Import</button></div></div>`},
+grp(){return`<h1>Group</h1><div class=card><div class=row>${bt('+ Tambah Group',"gForm()",'')}</div>${tbl(['No','Nama Group','Peserta',''],S.grp.map((g,i)=>[i+1,E(g.nama),S.pes.filter(p=>p.g===g.id).length,bt('Edit',`gForm('${g.id}')`)+' '+bt('Hapus',`del('grp','${g.id}')`,'d')]))}</div>`},
+pes(){const g=sel.g||'';return`<h1>Peserta</h1><div class=card><div class=row>Group: <select onchange="sel.g=this.value;render()"><option value="">Semua</option>${S.grp.map(x=>`<option value="${x.id}" ${g===x.id?'selected':''}>${E(x.nama)}</option>`).join('')}</select>${bt('+ Tambah Peserta',"pForm()",'')}</div>${tbl(['No','Username','Password','Nama','Group',''],S.pes.filter(p=>!g||p.g===g).map((p,i)=>[i+1,E(p.u),E(p.p),E(p.nama),E(gN(p.g)),bt('Edit',`pForm('${p.id}')`)+' '+bt('Hapus',`del('pes','${p.id}')`,'d')]))}</div>`},
+impp(){return`<h1>Import Peserta</h1><div class=card><p class=mu>Satu peserta per baris: <code>username, password, nama lengkap, group</code> (pisah koma/tab; group baru dibuat otomatis).</p><textarea id=pi style="min-height:180px"></textarea><div class=row><input type=file accept=".txt,.csv" onchange="this.files[0].text().then(x=>$('#pi').value=x)" style="width:auto"><button onclick="impPes()">Import</button></div></div>`},
+kartu(){const g=sel.g||(S.grp[0]||{}).id;return`<h1>Cetak Kartu</h1><div class="card no"><div class=row>Group: <select onchange="sel.g=this.value;render()">${S.grp.map(x=>`<option value="${x.id}" ${g===x.id?'selected':''}>${E(x.nama)}</option>`).join('')}</select><button onclick="print()">🖨 Cetak</button></div></div><div>${S.pes.filter(p=>p.g===g).map(p=>`<div class=kartu><b>KARTU UJIAN</b><br>${E(S.cfg.nama)}<hr><b>${E(p.nama)}</b><br>Group: ${E(gN(p.g))}<br>Username: <b>${E(p.u)}</b><br>Password: <b>${E(p.p)}</b></div>`).join('')}</div>`},
+tes(){return`<h1>Daftar Tes</h1><div class=card><div class=row>${bt('+ Tambah Tes',"tesForm()",'')}</div>${tbl(['No','Nama','Jadwal','Durasi','Group','Soal',''],S.tes.map((t,i)=>[i+1,E(t.nama),E((t.mulai||'-').replace('T',' ')+' → '+(t.selesai||'-').replace('T',' ')),t.durasi+' mnt',E(t.g.map(gN).join(', ')),t.ids.length,bt('Edit',`tesForm('${t.id}')`)+' '+bt('Soal',`tesSoal('${t.id}')`)+' '+bt('Hapus',`del('tes','${t.id}')`,'d')]))}</div>`},
+token(){const ok=S.token.d===td();return`<h1>Token</h1><div class=card><p class=mu>Token dipakai peserta untuk memulai tes (berlaku hari ini).</p><div class=st style="font-size:34px;font-weight:700;letter-spacing:6px;text-align:center;color:var(--pr)">${ok?S.token.c:'------'}</div><div class=row><button onclick="genTok()">Generate Token</button></div></div>`},
+hasil(){const t=hsel();const r=S.hasil.filter(h=>h.tes===t);return`<h1>Hasil Tes</h1><div class=card><div class=row>Tes: ${tesSel()}</div>${tbl(['No','Mulai','Peserta','Group','Nilai','Status',''],r.map((h,i)=>{const p=S.pes.find(x=>x.id===h.p)||{};return[i+1,new Date(h.mulai).toLocaleString('id-ID'),E(p.nama),E(gN(p.g)),h.fin?h.nilai:'-',h.fin?'Selesai':'Berjalan',(h.fin?'':bt('Hentikan',`stopH('${h.id}')`)+' ')+bt('+Waktu',`addT('${h.id}')`)+' '+bt('Hapus',`del('hasil','${h.id}')`,'d')]}))}</div>`},
+rekap(){const t=hsel(),T=S.tes.find(x=>x.id===t);if(!T)return`<h1>Rekap</h1><div class=card>Belum ada tes. <div class=row>${tesSel()}</div></div>`;const R=rows(T),fin=S.hasil.filter(h=>h.tes===t&&h.fin);
+const an=T.ids.map((sid,i)=>{const s=S.soal.find(x=>x.id===sid);if(!s)return null;const b=fin.filter(h=>h.a[sid]===s.k).length;const pct=fin.length?Math.round(b/fin.length*100):0;return[i+1,E(s.q.slice(0,90)),fin.length?pct+'%':'-',fin.length?(pct>=70?'Mudah':pct>=30?'Sedang':'Sulit'):'-']}).filter(Boolean);
+return`<h1>Rekap & Analisis</h1><div class=card><div class=row>Tes: ${tesSel()}<button onclick="expCsv()">⬇ Export CSV (Excel)</button></div>${tbl(['No','Nama','Group','Nilai'],R.map((r,i)=>[i+1,E(r[0]),E(r[1]),r[2]]))}</div><div class=card><h3>Analisis Butir Soal (tingkat kesukaran)</h3>${tbl(['No','Soal','% Benar','Kategori'],an)}</div>`},
+set(){return`<h1>Pengaturan & Backup</h1><div class=card><h3>Identitas</h3><div class=row><button class=s onclick="cfgForm()">Ubah identitas & akun admin</button></div></div><div class=card><h3>Backup / Restore</h3><div class=row><button onclick="sv('backup-cbt-mtsn3.json',JSON.stringify(S))">⬇ Backup data (.json)</button><input type=file accept=".json" id=rf style="width:auto"><button class=s onclick="restore()">Restore</button></div></div>`}};
+const hsel=()=>{if(!S.tes.find(x=>x.id===sel.h))sel.h=(S.tes[0]||{}).id;return sel.h};
+const tesSel=()=>`<select onchange="sel.h=this.value;render()">${S.tes.map(t=>`<option value="${t.id}" ${sel.h===t.id?'selected':''}>${E(t.nama)}</option>`).join('')}</select>`;
+function rows(T){return S.pes.filter(p=>T.g.includes(p.g)).map(p=>{const h=S.hasil.find(x=>x.tes===T.id&&x.p===p.id&&x.fin);return[p.nama,gN(p.g),h?h.nilai:'N/A']})}
+const q2=v=>'"'+String(v).replace(/"/g,'""')+'"';
+function expCsv(){const T=S.tes.find(x=>x.id===hsel());sv(`rekap-${T.nama.replace(/\W+/g,'-')}.csv`,'Nama,Group,Nilai\n'+rows(T).map(r=>r.map(q2).join(',')).join('\n'))}
+function tForm(i){const t=S.topik.find(x=>x.id===i)||{};form(i?'Edit Topik':'Tambah Topik',[{k:'n',l:'Nama Topik',v:t.nama},{k:'d',l:'Deskripsi',v:t.desk}],o=>{if(!o.n.trim())return false;if(i){t.nama=o.n;t.desk=o.d}else S.topik.push({id:uid(),nama:o.n,desk:o.d})})}
+function delTopik(i){if(confirm('Hapus topik beserta semua soalnya?')){S.topik=S.topik.filter(x=>x.id!==i);S.soal=S.soal.filter(s=>s.topik!==i);save();render()}}
+function sForm(i){const s=S.soal.find(x=>x.id===i)||{o:[]};form(i?'Edit Soal':'Tambah Soal',[{k:'q',l:'Soal',t:'area',v:s.q},...'ABCDE'.split('').map((L,n)=>({k:'o'+n,l:'Opsi '+L+(n>3?' (opsional)':''),v:s.o[n]})),{k:'k',l:'Jawaban benar',t:'select',o:'ABCDE'.split('').map((L,n)=>[n,L]),v:s.k??0}],o=>{const opts=[0,1,2,3,4].map(n=>o['o'+n].trim()).filter(Boolean);const k=+o.k;if(!o.q.trim()||opts.length<2||k>=opts.length){alert('Isi soal, minimal 2 opsi, dan pastikan kunci menunjuk opsi yang terisi.');return false}
+if(i){Object.assign(s,{q:o.q,o:opts,k})}else S.soal.push({id:uid(),topik:tsel(),q:o.q,o:opts,k})})}
+function impSoal(){const t=tsel();let n=0;$('#ti').value.split('\n').forEach(l=>{const c=l.split(l.includes('|')?'|':'\t').map(x=>x.trim());if(c.length<4)return;const key='ABCDE'.indexOf((c[c.length-1]||'').toUpperCase());const o=c.slice(1,-1).filter(Boolean);if(key<0||key>=o.length)return;S.soal.push({id:uid(),topik:t,q:c[0],o,k:key});n++});save();alert(n+' soal berhasil diimport.');render()}
+function gForm(i){const g=S.grp.find(x=>x.id===i)||{};form('Group',[{k:'n',l:'Nama Group',v:g.nama}],o=>{if(!o.n.trim())return false;if(i)g.nama=o.n;else S.grp.push({id:uid(),nama:o.n})})}
+function pForm(i){const p=S.pes.find(x=>x.id===i)||{};if(!S.grp.length)return alert('Tambah group dulu.');form('Peserta',[{k:'u',l:'Username',v:p.u},{k:'p',l:'Password',v:p.p},{k:'n',l:'Nama Lengkap',v:p.nama},{k:'g',l:'Group',t:'select',o:S.grp.map(x=>[x.id,x.nama]),v:p.g}],o=>{if(!o.u.trim()||!o.p.trim())return false;if(S.pes.some(x=>x.u===o.u&&x.id!==i)){alert('Username sudah dipakai.');return false}if(i)Object.assign(p,{u:o.u,p:o.p,nama:o.n,g:o.g});else S.pes.push({id:uid(),u:o.u,p:o.p,nama:o.n,g:o.g})})}
+function impPes(){let n=0;$('#pi').value.split('\n').forEach(l=>{const c=l.split(l.includes('\t')?'\t':',').map(x=>x.trim());if(c.length<3||!c[0]||S.pes.some(x=>x.u===c[0]))return;let g=S.grp.find(x=>x.nama===c[3]);if(!g&&c[3]){g={id:uid(),nama:c[3]};S.grp.push(g)}S.pes.push({id:uid(),u:c[0],p:c[1],nama:c[2],g:(g||S.grp[0]||{}).id});n++});save();alert(n+' peserta diimport.');render()}
+function tesForm(i){const t=S.tes.find(x=>x.id===i)||{g:[],ids:[],durasi:60,pb:1,ps:0,pk:0,as:true,aj:true,th:true};form(i?'Edit Tes':'Tambah Tes',[{k:'n',l:'Nama Tes',v:t.nama},{k:'d',l:'Deskripsi',v:t.desk},{k:'m',l:'Mulai',t:'datetime-local',v:t.mulai},{k:'e',l:'Selesai',t:'datetime-local',v:t.selesai},{k:'du',l:'Durasi (menit)',t:'number',v:t.durasi},{k:'g',l:'Group peserta',t:'multi',o:S.grp.map(x=>[x.id,x.nama]),v:t.g},{k:'pb',l:'Poin jawaban benar',t:'number',v:t.pb},{k:'ps',l:'Poin jawaban salah',t:'number',v:t.ps},{k:'pk',l:'Poin jawaban kosong',t:'number',v:t.pk},{k:'as',l:'Acak soal',t:'check',v:t.as},{k:'aj',l:'Acak jawaban',t:'check',v:t.aj},{k:'tk',l:'Wajib token',t:'check',v:t.token},{k:'th',l:'Tampilkan nilai ke peserta setelah selesai',t:'check',v:t.th}],o=>{if(!o.n.trim()){return false}const v={nama:o.n,desk:o.d,mulai:o.m,selesai:o.e,durasi:+o.du||60,g:o.g,pb:+o.pb,ps:+o.ps,pk:+o.pk,as:o.as,aj:o.aj,token:o.tk,th:o.th};if(i)Object.assign(t,v);else S.tes.push({id:uid(),ids:[],...v})})}
+function tesSoal(i){const t=S.tes.find(x=>x.id===i);const m=$('#md');m.innerHTML=`<div class=mb><h3>Soal untuk: ${E(t.nama)}</h3><p>Jumlah soal saat ini: <b>${t.ids.length}</b></p><label>Topik</label><select id=ts>${S.topik.map(x=>`<option value="${x.id}">${E(x.nama)} (${S.soal.filter(s=>s.topik===x.id).length} soal)</option>`).join('')}</select><label>Jumlah soal diambil (acak dari topik)</label><input id=tj type=number value=10><div class=row><button onclick="addTS('${i}')">Tambahkan</button><button class=d onclick="S.tes.find(x=>x.id==='${i}').ids=[];save();tesSoal('${i}');render()">Kosongkan</button><button class=s onclick="closeM()">Tutup</button></div></div>`;m.hidden=false}
+function addTS(i){const t=S.tes.find(x=>x.id===i),pool=shuf(S.soal.filter(s=>s.topik===$('#ts').value&&!t.ids.includes(s.id))).slice(0,+$('#tj').value||0);t.ids.push(...pool.map(s=>s.id));save();tesSoal(i);render()}
+function genTok(){S.token={c:Math.random().toString(36).slice(2,8).toUpperCase(),d:td()};save();render()}
+async function stopH(i){if(!confirm('Hentikan ujian peserta ini sekarang?'))return;const h=S.hasil.find(x=>x.id===i);h.fin=true;await save();await loadAdmin()}
+function addT(i){const m=+prompt('Tambah waktu (menit):','10');if(m>0){S.hasil.find(x=>x.id===i).x=(S.hasil.find(x=>x.id===i).x||0)+m;save();alert('Waktu ditambah.')}}
+function cfgForm(){form('Pengaturan',[{k:'n',l:'Nama pelaksana',v:S.cfg.nama},{k:'k',l:'Keterangan',v:S.cfg.ket},{k:'u',l:'Username admin',v:S.cfg.au},{k:'p',l:'Password admin baru (kosongkan jika tidak diganti)',v:''}],o=>{if(!o.u)return false;Object.assign(S.cfg,{nama:o.n,ket:o.k,au:o.u,ap:o.p})})}
+function restore(){const f=$('#rf').files[0];if(!f)return alert('Pilih file backup.');f.text().then(async x=>{try{const d=JSON.parse(x);if(!d.topik||!d.soal||!d.pes||!d.tes||!d.grp)throw 0;if(!confirm('Semua data saat ini akan diganti dengan isi backup. Lanjutkan?'))return;d.hasil=d.hasil||[];d.cfg=d.cfg||S.cfg;d.token={c:'',d:''};S=d;busy(true);await save();busy(false);alert('Data dipulihkan.');await loadAdmin()}catch(e){busy(false);alert('File backup tidak valid.')}})}
+
+/* ---------- PESERTA ---------- */
+const endT=(h,t)=>{let e=h.mulai+(t.durasi+(h.x||0))*60000;if(t.selesai)e=Math.min(e,new Date(t.selesai).getTime()+(h.x||0)*60000);return e};
+function pesView(){const hd=`<div class=main style="max-width:860px;margin:0 auto"><div class="row no" style="justify-content:space-between"><b>${E(S.cfg.nama)} · ${E(P.nama)} (${E(gN(P.g))})</b><button class=s onclick="logout()">Keluar</button></div>`;
+if(cur)return hd+examView()+'</div>';
+const now=Date.now(),L=S.tes.filter(t=>t.g.includes(P.g));
+return hd+`<h1>Daftar Tes</h1><p class=mu>Pilih tes yang tersedia. Jika tes tidak muncul, hubungi pengawas.</p>`+(L.map(t=>{const h=S.hasil.find(x=>x.tes===t.id&&x.p===P.id);const open=(!t.mulai||now>=new Date(t.mulai))&&(!t.selesai||now<=new Date(t.selesai));
+let act=h&&h.fin?`<span class=tag>Selesai${t.th?' · Nilai '+h.nilai:''}</span>`:!open&&!h?`<span class=mu>Belum/ sudah tidak dibuka</span>`:t.ids.length?`<button onclick="mulai('${t.id}')">${h?'Lanjutkan':'Mulai'}</button>`:'<span class=mu>Soal belum tersedia</span>';
+return`<div class=card><b>${E(t.nama)}</b><div class=mu>${E(t.desk||'')} · ${t.durasi} menit · ${t.ids.length} soal</div><div class=row>${act}</div></div>`}).join('')||'<div class=card>Belum ada tes untuk group Anda.</div>')+'</div>'}
+async function mulai(tid){const t=S.tes.find(x=>x.id===tid);let h=S.hasil.find(x=>x.tes===tid&&x.p===P.id),tk='';
+if(!h&&t.token){tk=prompt('Masukkan token tes:');if(!tk)return}
+busy(true);const r=await api({action:'pstart',tk:TK,tes:tid,token:tk});busy(false);
+if(!r.ok){alert(r.err);return}
+r.soal.forEach(q=>{if(!S.soal.some(x=>x.id===q.id))S.soal.push(q)});
+const i=S.hasil.findIndex(x=>x.id===r.h.id);if(i<0)S.hasil.push(r.h);else S.hasil[i]=r.h;
+cur={h:r.h.id,i:0};clearInterval(tmr);tmr=setInterval(tick,1000);render()}
+function tick(){const h=S.hasil.find(x=>x.id===cur?.h);if(!h||h.fin){clearInterval(tmr);return}const t=S.tes.find(x=>x.id===h.tes),r=endT(h,t)-Date.now();if(r<=0){clearInterval(tmr);finP(h,true);return}const e=$('#tm');if(e)e.textContent=Math.floor(r/60000)+':'+String(Math.floor(r/1000)%60).padStart(2,'0')}
+function pushAns(){clearTimeout(pt);const h=S.hasil.find(x=>x.id===cur?.h);if(!h||h.fin)return Promise.resolve();const set=t=>{const e=$('#sv');if(e)e.textContent=t};set('Menyimpan…');
+return api({action:'pans',tk:TK,h:h.id,a:h.a}).then(r=>set(r.ok?'Tersimpan ✓':'Gagal simpan, mencoba lagi…'))}
+async function finP(h,auto){clearInterval(tmr);clearTimeout(pt);busy(true);let r=await api({action:'pfin',tk:TK,h:h.id,a:h.a});if(!r.ok)r=await api({action:'pfin',tk:TK,h:h.id,a:h.a});busy(false);
+if(!r.ok){alert('Gagal mengirim jawaban: '+r.err+'\nPeriksa koneksi lalu tekan Selesai lagi.');cur&&(tmr=setInterval(tick,1000));return}
+Object.assign(h,r.h);h.fin=true;if(auto)alert('Waktu habis. Jawaban Anda sudah dikirim.');render()}
+function examView(){const h=S.hasil.find(x=>x.id===cur.h),t=S.tes.find(x=>x.id===h.tes);if(h.fin){clearInterval(tmr);return`<div class=card><h1>Tes selesai ✔</h1><p>Jawaban Anda sudah tersimpan.</p>${t.th?`<div class=st><b>${h.nilai}</b>Nilai Anda</div>`:''}<div class=row><button onclick="cur=null;render()">Kembali</button></div></div>`}
+const sid=h.ids[cur.i],s=S.soal.find(x=>x.id===sid),pm=h.perm[sid];
+return`<div class="row" style="justify-content:space-between"><b>${E(t.nama)}</b><span><span id=sv class=mu></span> <span class=tag>⏱ <span id=tm>--:--</span></span></span></div>
+<div class=card><div class=mu>Soal ${cur.i+1} dari ${h.ids.length}</div><p style="font-size:16px;white-space:pre-wrap">${E(s.q)}</p>${pm.map((o,n)=>`<div class="opt ${h.a[sid]===o?'on':''}" onclick="ans('${sid}',${o})"><b>${'ABCDE'[n]}.</b><span>${E(s.o[o])}</span></div>`).join('')}
+<div class=row><button class=s onclick="nav(-1)" ${cur.i?'':'disabled'}>← Sebelumnya</button><button class=s onclick="nav(1)" ${cur.i<h.ids.length-1?'':'disabled'}>Berikutnya →</button><button onclick="fin()" style="margin-left:auto">Selesai</button></div></div>
+<div class=card><div class=num>${h.ids.map((i,n)=>`<button class="${n===cur.i?'cur':h.a[i]!==undefined?'a':''}" onclick="cur.i=${n};render()">${n+1}</button>`).join('')}</div></div>`}
+function ans(s,o){S.hasil.find(x=>x.id===cur.h).a[s]=o;render();clearTimeout(pt);pt=setTimeout(pushAns,2500)}
+const nav=d=>{cur.i+=d;render();pushAns()};
+function fin(){const h=S.hasil.find(x=>x.id===cur.h),k=h.ids.filter(i=>h.a[i]===undefined).length;if(confirm(k?`Masih ${k} soal belum dijawab. Akhiri tes?`:'Akhiri tes dan kirim jawaban?'))finP(h)}
+
+function render(){$('#root').innerHTML=mode==='login'?loginView():mode==='admin'?adminView():pesView();if(mode==='peserta'&&cur)tick()}
+render();
+api({action:'info'}).then(r=>{if(r.ok){PUB=r.cfg;if(mode==='login'&&!(($('#lu')||{}).value)){S.cfg={...PUB};render()}}});
+</script></body></html>
