@@ -1,393 +1,274 @@
-/**
- * API CBT Ujian Online MTsN 3 Subang
- * Google Sheets sebagai database. Deploy sebagai Web app:
- * Execute as: Me | Who has access: Anyone
- */
-const SS = SpreadsheetApp.getActiveSpreadsheet();
-const TZ = SS.getSpreadsheetTimeZone();
-const L5 = 'ABCDE';
+/* CBT MTsN 3 Subang – Backend Apps Script (multi mapel & multi guru)
+   Database: Google Sheets di bawah. Sheet dibuat otomatis saat pertama dipakai. */
+const SS_ID = '1zWHSga-6ossQvT85ZV_G4jH5SJsxTgCUAH21-XSh-YM';
+const TABLES = ['mapel', 'guru', 'topik', 'soal', 'grp', 'pes', 'tes', 'hasil'];
+const GURU_TABLES = ['topik', 'soal', 'tes', 'hasil'];
+const TZ = 'Asia/Jakarta';
 
-/* ---------- utilitas ---------- */
-const bool = v => v === true || String(v).toUpperCase() === 'TRUE';
-const num = (v, d) => (v === '' || v == null || isNaN(+v)) ? d : +v;
-const list = v => String(v == null ? '' : v).split(',').map(s => s.trim()).filter(Boolean);
-const dt = v => v instanceof Date ? Utilities.formatDate(v, TZ, "yyyy-MM-dd'T'HH:mm") : String(v == null ? '' : v);
-const ms = v => v instanceof Date ? v.getTime() : Date.parse(v);
-const pd = s => { try { return s ? Utilities.parseDate(s, TZ, "yyyy-MM-dd'T'HH:mm").getTime() : 0; } catch (e) { return 0; } };
+/* ---------- util ---------- */
+const ok = o => out(Object.assign({ ok: true }, o || {}));
+const err = m => out({ ok: false, err: m });
+const out = o => ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 const today = () => Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
 const uid = () => Utilities.getUuid().replace(/-/g, '').slice(0, 7);
-const shuf = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = a[i]; a[i] = a[j]; a[j] = x; } return a; };
-const ansStr = a => Object.keys(a || {}).map(k => k + ':' + L5[a[k]]).join(';');
-const ansObj = s => { const a = {}; String(s || '').split(';').forEach(p => { const q = p.split(':'); if (q[0] && L5.indexOf(q[1]) >= 0) a[q[0]] = L5.indexOf(q[1]); }); return a; };
-const parseJ = s => { try { return JSON.parse(s) || {}; } catch (e) { return {}; } };
-const clean = (a, ids) => { const o = {}; ids.forEach(i => { const v = a && a[i]; if (Number.isInteger(v) && v >= 0 && v <= 4) o[i] = v; }); return o; };
-const endT = (h, t) => { let e = h.mulai + (t.durasi + (h.x || 0)) * 60000; const s = pd(t.selesai); if (s) e = Math.min(e, s + (h.x || 0) * 60000); return e; };
+const shuf = a => { a = a.slice(); for (let i = a.length; i > 1;) { const j = Math.floor(Math.random() * i--); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const summ = o => String(o.nama || o.q || o.u || (o.tes ? 'tes ' + o.tes + ' | nilai ' + o.nilai : '') || '').slice(0, 80);
 
-/* ---------- skema tabel: kolom sheet <-> objek aplikasi ---------- */
-const T = {
-  Topik: {
-    cols: ['id', 'nama', 'deskripsi'],
-    toRow: o => [o.id, o.nama, o.desk || ''],
-    fromRow: r => ({ id: String(r.id), nama: String(r.nama), desk: String(r.deskripsi) })
-  },
-  Soal: {
-    cols: ['id', 'topik_id', 'pertanyaan', 'opsi_A', 'opsi_B', 'opsi_C', 'opsi_D', 'opsi_E', 'kunci'],
-    toRow: o => [o.id, o.topik, o.q, o.o[0] || '', o.o[1] || '', o.o[2] || '', o.o[3] || '', o.o[4] || '', L5[o.k]],
-    fromRow: r => ({
-      id: String(r.id), topik: String(r.topik_id), q: String(r.pertanyaan),
-      o: L5.split('').map(L => r['opsi_' + L]).filter(x => x !== '').map(String),
-      k: L5.indexOf(String(r.kunci).toUpperCase())
-    })
-  },
-  Group: {
-    cols: ['id', 'nama'],
-    toRow: o => [o.id, o.nama],
-    fromRow: r => ({ id: String(r.id), nama: String(r.nama) })
-  },
-  Peserta: {
-    cols: ['id', 'username', 'password', 'nama', 'group_id'],
-    toRow: o => [o.id, o.u, o.p, o.nama, o.g],
-    fromRow: r => ({ id: String(r.id), u: String(r.username), p: String(r.password), nama: String(r.nama), g: String(r.group_id) })
-  },
-  Tes: {
-    cols: ['id', 'nama', 'mulai', 'selesai', 'durasi_menit', 'group_id', 'soal_id', 'poin_benar', 'poin_salah', 'poin_kosong', 'acak_soal', 'acak_jawaban', 'tampilkan_nilai', 'deskripsi', 'wajib_token'],
-    toRow: o => [o.id, o.nama, o.mulai || '', o.selesai || '', o.durasi, (o.g || []).join(','), (o.ids || []).join(','), o.pb, o.ps, o.pk, !!o.as, !!o.aj, !!o.th, o.desk || '', !!o.token],
-    fromRow: r => ({
-      id: String(r.id), nama: String(r.nama), desk: String(r.deskripsi || ''), mulai: dt(r.mulai), selesai: dt(r.selesai),
-      durasi: num(r.durasi_menit, 60), g: list(r.group_id), ids: list(r.soal_id),
-      pb: num(r.poin_benar, 1), ps: num(r.poin_salah, 0), pk: num(r.poin_kosong, 0),
-      as: bool(r.acak_soal), aj: bool(r.acak_jawaban), th: bool(r.tampilkan_nilai), token: bool(r.wajib_token)
-    })
-  },
-  Hasil: {
-    cols: ['id', 'tes_id', 'peserta_id', 'mulai', 'selesai', 'tambahan_waktu_menit', 'urutan_soal_id', 'jawaban', 'perm'],
-    toRow: h => [h.id, h.tes, h.p, new Date(h.mulai).toISOString(), !!h.fin, h.x || 0, (h.ids || []).join(','), ansStr(h.a), JSON.stringify(h.perm || {})],
-    fromRow: r => ({
-      id: String(r.id), tes: String(r.tes_id), p: String(r.peserta_id), mulai: ms(r.mulai), fin: bool(r.selesai),
-      x: num(r.tambahan_waktu_menit, 0), ids: list(r.urutan_soal_id), a: ansObj(r.jawaban), perm: parseJ(r.perm)
-    })
-  }
-};
-
-/* ---------- akses sheet ---------- */
-function read(name) {
-  const sh = SS.getSheetByName(name), lr = sh.getLastRow(), lc = sh.getLastColumn();
-  const head = sh.getRange(1, 1, 1, lc).getValues()[0];
-  if (lr < 2) return { sh: sh, h: head, rows: [] };
-  const ids = sh.getRange(1, 1, lr, 1).getValues();
-  let n = 0;
-  for (let i = ids.length - 1; i >= 1; i--) if (ids[i][0] !== '') { n = i; break; }
-  if (!n) return { sh: sh, h: head, rows: [] };
-  const vals = sh.getRange(1, 1, n + 1, lc).getValues();
-  const rows = [];
-  for (let i = 1; i < vals.length; i++) {
-    if (vals[i][0] === '') continue;
-    const o = { _r: i + 1 };
-    head.forEach((k, c) => { o[k] = vals[i][c]; });
-    rows.push(o);
-  }
-  return { sh: sh, h: head, rows: rows };
+function sh(n) {
+  const s = SpreadsheetApp.openById(SS_ID);
+  let x = s.getSheetByName(n);
+  if (!x) { x = s.insertSheet(n); x.getRange('A:C').setNumberFormat('@'); x.getRange(1, 1, 1, 3).setValues([['id', 'data (JSON)', 'ringkas']]); x.setFrozenRows(1); }
+  return x;
 }
-
-function rowOf(sh, id) {
-  const lr = sh.getLastRow();
-  if (lr < 2) return 0;
-  const f = sh.getRange(1, 1, lr, 1).createTextFinder(String(id)).matchEntireCell(true).matchCase(true).findNext();
-  return f ? f.getRow() : 0;
+const imgIds = s => [s.img].concat(s.oi || []).filter(Boolean);
+function removeImgs(ids) {
+  if (!ids.length) return;
+  const s = sh('gambar'), last = s.getLastRow(); if (last < 2) return;
+  const v = s.getRange(2, 1, last - 1, 1).getValues();
+  for (let i = v.length - 1; i >= 0; i--) if (ids.indexOf(String(v[i][0])) >= 0) s.deleteRow(i + 2);
 }
-
-function rowObj(name, id) {
-  const sh = SS.getSheetByName(name), r = rowOf(sh, id);
-  if (!r) return null;
-  const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  const v = sh.getRange(r, 1, 1, h.length).getValues()[0];
-  const o = { _r: r };
-  h.forEach((k, i) => { o[k] = v[i]; });
-  return { sh: sh, h: h, r: r, o: o };
+function writeSheet(name, rows) {
+  const ss = SpreadsheetApp.openById(SS_ID);
+  let s = ss.getSheetByName(name); if (!s) s = ss.insertSheet(name);
+  s.clear();
+  const w = Math.max.apply(null, rows.map(r => r.length));
+  const v = rows.map(r => { const a = r.slice(); while (a.length < w) a.push(''); return a; });
+  const rg = s.getRange(1, 1, v.length, w); rg.setNumberFormat('@'); rg.setValues(v);
+  s.getRange(1, 1, 1, 1).setFontWeight('bold');
 }
-
-function writeRuns(sh, idx, rows, r0) {
-  const need = r0 + rows.length - 1;
-  if (sh.getMaxRows() < need) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
-  let s = 0;
-  for (let i = 1; i <= idx.length; i++) {
-    if (i === idx.length || idx[i] !== idx[i - 1] + 1) {
-      sh.getRange(r0, idx[s], rows.length, i - s).setValues(rows.map(v => v.slice(s, i)));
-      s = i;
-    }
-  }
+function readT(n) {
+  const s = sh(n), last = s.getLastRow();
+  if (last < 2) return [];
+  return s.getRange(2, 2, last - 1, 1).getValues().map(r => { try { return JSON.parse(r[0]); } catch (e) { return null; } }).filter(Boolean);
 }
-
-/** Tulis baris (array sesuai cols; elemen pertama = kunci). Kolom rumus tidak disentuh. */
-function put(name, cols, rows, onlyNew) {
-  const t = read(name), sh = t.sh, h = t.h.slice();
-  const idx = cols.map(c => {
-    let i = h.indexOf(c);
-    if (i < 0) { h.push(c); i = h.length - 1; sh.getRange(1, i + 1).setValue(c); }
-    return i + 1;
+function upsert(n, list) {
+  if (!list.length) return;
+  const s = sh(n), last = s.getLastRow(), idx = {}, add = [];
+  if (last > 1) s.getRange(2, 1, last - 1, 1).getValues().forEach((r, i) => idx[r[0]] = i + 2);
+  list.forEach(o => {
+    const row = [o.id, JSON.stringify(o), summ(o)];
+    if (idx[o.id]) s.getRange(idx[o.id], 1, 1, 3).setValues([row]); else add.push(row);
   });
-  const pos = {};
-  t.rows.forEach(r => { pos[String(r[t.h[0]])] = r._r; });
-  let next = 2;
-  t.rows.forEach(r => { if (r._r >= next) next = r._r + 1; });
-  const add = [];
-  rows.forEach(v => {
-    const r = pos[String(v[0])];
-    if (r) { if (!onlyNew) writeRuns(sh, idx, [v], r); } else add.push(v);
-  });
-  if (add.length) writeRuns(sh, idx, add, next);
+  if (add.length) s.getRange(s.getLastRow() + 1, 1, add.length, 3).setValues(add);
+}
+function remove(n, ids) {
+  const s = sh(n), last = s.getLastRow();
+  if (last < 2 || !ids.length) return;
+  const v = s.getRange(2, 1, last - 1, 1).getValues();
+  for (let i = v.length - 1; i >= 0; i--) if (ids.indexOf(v[i][0]) >= 0) s.deleteRow(i + 2);
+}
+function getOne(n, id) {
+  const f = sh(n).getRange('A:A').createTextFinder(String(id)).matchEntireCell(true).findNext();
+  if (!f) return null;
+  return { row: f.getRow(), obj: JSON.parse(sh(n).getRange(f.getRow(), 2).getValue()) };
+}
+function putOne(n, row, o) { sh(n).getRange(row, 1, 1, 3).setValues([[o.id, JSON.stringify(o), summ(o)]]); }
+function getKV(k) { const f = sh('cfg').getRange('A:A').createTextFinder(k).matchEntireCell(true).findNext(); return f ? JSON.parse(sh('cfg').getRange(f.getRow(), 2).getValue()) : null; }
+function setKV(k, v) {
+  const s = sh('cfg'), f = s.getRange('A:A').createTextFinder(k).matchEntireCell(true).findNext();
+  if (f) s.getRange(f.getRow(), 2).setValue(JSON.stringify(v)); else s.appendRow([k, JSON.stringify(v)]);
 }
 
-function del(name, ids) {
-  const t = read(name), set = {};
-  ids.forEach(i => { set[String(i)] = 1; });
-  t.rows.filter(r => set[String(r[t.h[0]])]).map(r => r._r).sort((a, b) => b - a).forEach(r => t.sh.deleteRow(r));
+/* ---------- auth ---------- */
+function who(a) {
+  if (!a) return null;
+  const c = getKV('cfg') || {};
+  if (a.u === (c.au || 'admin') && a.p === (c.ap || 'admin123')) return { role: 'admin' };
+  const g = readT('guru').find(x => x.u === a.u && x.p === a.p);
+  return g ? { role: 'guru', g: g } : null;
 }
-
-const withLock = fn => { const l = LockService.getScriptLock(); l.waitLock(30000); try { return fn(); } finally { l.releaseLock(); } };
-
-/* ---------- konfigurasi, token, sesi ---------- */
-function cfg() {
-  const o = {};
-  read('Konfigurasi').rows.forEach(r => { o[r.kunci] = String(r.nilai); });
-  return { nama: o.nama || 'CBT', ket: o.ket || '', au: o.admin_user || '', ap: o.admin_pass || '' }; // ap = hash/teks tersimpan; jangan kirim ke klien
-}
-const pub = () => { const c = cfg(); return { nama: c.nama, ket: c.ket }; };
-/* ---------- keamanan: hash password admin & pembatasan percobaan login ---------- */
-const hex = bytes => bytes.map(b => ('0' + (b & 255).toString(16)).slice(-2)).join('');
-const hashPw = (p, salt) => 'h1$' + salt + '$' + hex(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + '|' + p, Utilities.Charset.UTF_8));
-const newHash = p => hashPw(p, uid() + uid());
-function samePw(stored, p) {
-  stored = String(stored || ''); p = String(p == null ? '' : p);
-  if (stored.indexOf('h1$') === 0) return hashPw(p, stored.split('$')[1]) === stored;
-  return stored !== '' && stored === p;
-}
-const setAdminPw = v => put('Konfigurasi', ['kunci', 'nilai'], [['admin_pass', v]]);
-function adminOK(u, p) {
-  const c = cfg();
-  if (!c.au || String(u) !== c.au || !samePw(c.ap, p)) return false;
-  if (String(c.ap).indexOf('h1$') !== 0) setAdminPw(newHash(String(p))); // migrasi otomatis dari teks biasa
-  return true;
-}
-const isAdmin = a => !!(a && adminOK(a.u, a.p));
-
-const LOCK_SEC = 600;
-const lkKey = k => 'f_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(k))).slice(0, 24);
-const locked = (k, max) => num(CacheService.getScriptCache().get(lkKey(k)), 0) >= max;
-const failed = k => { const c = CacheService.getScriptCache(); c.put(lkKey(k), String(num(c.get(lkKey(k)), 0) + 1), LOCK_SEC); };
-const passed = k => CacheService.getScriptCache().remove(lkKey(k));
-const LOCKMSG = 'Terlalu banyak percobaan gagal. Coba lagi dalam 10 menit.';
-const weakPw = p => String(p).length < 6 || ['admin', 'password', '123456', '12345678', 'admin123'].indexOf(String(p).toLowerCase()) >= 0;
-
-function tokenNow() {
-  const v = SS.getSheetByName('Token').getRange(2, 1, 1, 2).getValues()[0];
-  const d = v[1] instanceof Date ? Utilities.formatDate(v[1], TZ, 'yyyy-MM-dd') : String(v[1] || '');
-  return { c: String(v[0] || ''), d: d };
-}
-
 function secret() {
   const p = PropertiesService.getScriptProperties();
-  let s = p.getProperty('S');
-  if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); p.setProperty('S', s); }
+  let s = p.getProperty('SEC');
+  if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); p.setProperty('SEC', s); }
   return s;
 }
-const sig = id => Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(String(id), secret())).slice(0, 22);
-const tok = id => id + '.' + sig(id);
-function chk(tk) {
-  tk = String(tk || '');
-  const i = tk.lastIndexOf('.');
-  if (i < 1) return '';
-  const id = tk.slice(0, i);
-  return sig(id) === tk.slice(i + 1) ? id : '';
+const sign = pes => pes.id + '.' + Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(pes.id + '|' + pes.p, secret())).replace(/=+$/, '');
+function pesFrom(tk) {
+  const id = String(tk || '').split('.')[0], r = getOne('pes', id);
+  return r && sign(r.obj) === tk ? r.obj : null;
 }
 
-/* ---------- data tes (di-cache 2 menit) ---------- */
-function bundle(tid) {
-  const c = CacheService.getScriptCache(), key = 'b' + (c.get('v') || '0') + '_' + tid;
-  const hit = c.get(key);
-  if (hit) return JSON.parse(hit);
-  const tr = rowObj('Tes', tid);
-  if (!tr) return {};
-  const t = T.Tes.fromRow(tr.o), want = {}, soal = {};
-  t.ids.forEach(i => { want[i] = 1; });
-  read('Soal').rows.forEach(r => { if (want[String(r.id)]) soal[String(r.id)] = T.Soal.fromRow(r); });
-  const out = { t: t, soal: soal };
-  try { c.put(key, JSON.stringify(out), 120); } catch (e) { /* terlalu besar: abaikan */ }
-  return out;
+/* ---------- data ---------- */
+function tokMap() { const t = getKV('token') || {}; return t.c !== undefined ? {} : t; }
+function cfgPub() { const c = getKV('cfg') || {}; return { nama: c.nama || 'CBT MTsN 3 Subang', ket: c.ket || 'Ujian Online Berbasis Komputer', kepala: c.kepala || '', nipk: c.nipk || '' }; }
+function buildS(w) {
+  const c = getKV('cfg') || {}, cfg = Object.assign(cfgPub(), { au: c.au || 'admin' });
+  const S = { cfg, mapel: readT('mapel'), guru: readT('guru'), topik: readT('topik'), soal: readT('soal'), grp: readT('grp'), pes: readT('pes'), tes: readT('tes'), hasil: readT('hasil'), token: tokMap(), role: w.role };
+  if (w.role === 'admin') { if (!c.ap) S.warn = 'Akun admin masih default (admin / admin123). Segera ganti di Pengaturan & Backup.'; return S; }
+  const m = w.g.m || [];
+  S.role = 'guru'; delete S.cfg.au;
+  S.guru = [w.g];
+  S.token = Object.fromEntries(Object.entries(S.token).filter(e => m.indexOf(e[0]) >= 0));
+  S.mapel = S.mapel.filter(x => m.indexOf(x.id) >= 0);
+  S.topik = S.topik.filter(t => m.indexOf(t.m) >= 0);
+  const tid = {}; S.topik.forEach(t => tid[t.id] = 1);
+  S.soal = S.soal.filter(s => tid[s.topik]);
+  S.tes = S.tes.filter(t => m.indexOf(t.m) >= 0);
+  const eid = {}; S.tes.forEach(t => eid[t.id] = 1);
+  S.hasil = S.hasil.filter(h => eid[h.tes]);
+  S.pes = S.pes.map(p => ({ id: p.id, nama: p.nama, g: p.g }));
+  return S;
 }
-const bust = () => CacheService.getScriptCache().put('v', String(Date.now()), 21600);
-
-function grade(h, t, soal) {
-  let pts = 0;
+function score(h, T) {
+  const sm = {}; readT('soal').forEach(s => sm[s.id] = s);
+  let p = 0;
   h.ids.forEach(i => {
-    const s = soal[i];
-    if (!s) return;
+    const s = sm[i]; if (!s) return;
     const a = h.a[i];
-    pts += a === undefined ? t.pk : a === s.k ? t.pb : t.ps;
+    p += (a === undefined || a === null) ? (+T.pk || 0) : (a === s.k ? (+T.pb || 0) : (+T.ps || 0));
   });
-  const mx = h.ids.length * t.pb;
-  return mx > 0 ? Math.round(Math.max(0, pts) / mx * 10000) / 100 : pts;
+  return Math.round(p / (h.ids.length * (+T.pb || 1)) * 1000) / 10; // nilai skala 0-100
 }
+const endMs = (h, T) => { let e = h.mulai + (T.durasi + (h.x || 0)) * 60000; if (T.selesai) e = Math.min(e, new Date(T.selesai).getTime() + (h.x || 0) * 60000); return e; };
 
-function findH(pid, tid) {
-  const r = read('Hasil').rows.find(x => String(x.peserta_id) === String(pid) && String(x.tes_id) === String(tid));
-  return r ? T.Hasil.fromRow(r) : null;
-}
-
-function newH(pid, t, soal) {
-  const ids = (t.as ? shuf(t.ids) : t.ids.slice()).filter(i => soal[i]);
-  const perm = {};
-  ids.forEach(i => {
-    const ix = soal[i].o.map((_, n) => n);
-    perm[i] = t.aj ? shuf(ix) : ix;
-  });
-  const h = { id: uid(), tes: t.id, p: pid, mulai: Date.now(), ids: ids, perm: perm, a: {}, fin: false, x: 0 };
-  put('Hasil', T.Hasil.cols, [T.Hasil.toRow(h)], true);
-  return h;
-}
-
-/* ---------- aksi ---------- */
-const slim = t => ({ id: t.id, nama: t.nama, desk: t.desk, mulai: t.mulai, selesai: t.selesai, durasi: t.durasi, g: t.g, ids: t.ids, token: t.token, th: t.th });
-const NO = err => ({ ok: false, err: err });
-
-const A = {
-  info: () => ({ ok: true, cfg: pub() }),
-
-  alogin: b => {
-    if (locked('admin', 5)) return NO(LOCKMSG);
-    if (!adminOK(b.u, b.p)) { failed('admin'); return NO('Login admin salah.'); }
-    passed('admin');
-    const c = cfg();
-    c.ap = ''; // password tidak pernah dikirim balik ke browser
-    const g = n => read(n).rows;
-    const soal = g('Soal').map(T.Soal.fromRow), sm = {};
-    soal.forEach(s => { sm[s.id] = s; });
-    const tes = g('Tes').map(T.Tes.fromRow), tm = {};
-    tes.forEach(t => { tm[t.id] = t; });
-    const hasil = g('Hasil').map(T.Hasil.fromRow);
-    hasil.forEach(h => { if (h.fin && tm[h.tes]) h.nilai = grade(h, tm[h.tes], sm); });
-    const tk = tokenNow();
-    return { ok: true, S: { cfg: c, topik: g('Topik').map(T.Topik.fromRow), soal: soal, grp: g('Group').map(T.Group.fromRow), pes: g('Peserta').map(T.Peserta.fromRow), tes: tes, token: { c: tk.c, d: tk.d }, hasil: hasil, warn: weakPw(b.p) ? 'Password admin Anda lemah/bawaan. Segera ganti di Pengaturan & Backup > Ubah identitas & akun admin.' : '' } };
-  },
-
-  sync: b => {
-    if (!isAdmin(b.auth)) return NO('Akses ditolak.');
-    const ch = b.ch || {};
-    return withLock(() => {
-      const map = { topik: 'Topik', soal: 'Soal', grp: 'Group', pes: 'Peserta', tes: 'Tes' };
-      Object.keys(map).forEach(k => {
-        const c = ch[k];
-        if (!c) return;
-        const sp = T[map[k]];
-        if (c.up.length) put(map[k], sp.cols, c.up.map(sp.toRow));
-        if (c.rm.length) del(map[k], c.rm);
-      });
-      if (ch.hasil) {
-        const sp = T.Hasil, t = read('Hasil');
-        const cx = t.h.indexOf('tambahan_waktu_menit') + 1, cf = t.h.indexOf('selesai') + 1, pos = {}, add = [];
-        t.rows.forEach(r => { pos[String(r.id)] = r; });
-        ch.hasil.up.forEach(h => {
-          const r = pos[String(h.id)];
-          if (!r) { add.push(sp.toRow(h)); return; }
-          if (cx > 0) t.sh.getRange(r._r, cx).setValue(h.x || 0);
-          if (h.fin && !bool(r.selesai) && cf > 0) t.sh.getRange(r._r, cf).setValue(true);
-        });
-        if (add.length) put('Hasil', sp.cols, add, true);
-        if (ch.hasil.rm.length) del('Hasil', ch.hasil.rm);
-      }
-      if (ch.cfg) put('Konfigurasi', ['kunci', 'nilai'], [['nama', ch.cfg.nama], ['ket', ch.cfg.ket], ['admin_user', ch.cfg.au], ['admin_pass', ch.cfg.ap ? newHash(String(ch.cfg.ap)) : cfg().ap]]); // kosong = password tidak diubah
-      if (ch.token) SS.getSheetByName('Token').getRange(2, 1, 1, 2).setNumberFormat('@').setValues([[String(ch.token.c || ''), ch.token.c ? today() : '']]);
-      bust();
-      return { ok: true };
-    });
-  },
-
-  plogin: b => {
-    const lk = 'p:' + String(b.u).trim().toLowerCase();
-    if (locked(lk, 8)) return NO(LOCKMSG);
-    const p = read('Peserta').rows.find(r => String(r.username) === String(b.u).trim() && String(r.password) === String(b.p));
-    if (!p) { failed(lk); return NO('Username/password peserta salah.'); }
-    passed(lk);
-    const gid = String(p.group_id);
-    const grp = read('Group').rows.filter(r => String(r.id) === gid).map(T.Group.fromRow);
-    const tes = read('Tes').rows.map(T.Tes.fromRow).filter(t => t.g.indexOf(gid) >= 0);
-    const tm = {};
-    tes.forEach(t => { tm[t.id] = t; });
-    const hasil = read('Hasil').rows.filter(r => String(r.peserta_id) === String(p.id)).map(T.Hasil.fromRow)
-      .filter(h => tm[h.tes]).map(h => {
-        const o = { id: h.id, tes: h.tes, p: h.p, mulai: h.mulai, ids: h.ids, perm: h.perm, a: h.a, fin: h.fin, x: h.x };
-        if (h.fin && tm[h.tes].th) o.nilai = grade(h, tm[h.tes], bundle(h.tes).soal || {});
-        return o;
-      });
-    return { ok: true, tk: tok(String(p.id)), cfg: pub(), pes: { id: String(p.id), u: String(p.username), nama: String(p.nama), g: gid }, grp: grp, tes: tes.map(slim), hasil: hasil };
-  },
-
-  pstart: b => {
-    const pid = chk(b.tk);
-    if (!pid) return NO('Sesi berakhir, silakan login ulang.');
-    const bn = bundle(b.tes), t = bn.t;
-    if (!t) return NO('Tes tidak ditemukan.');
-    const po = rowObj('Peserta', pid);
-    if (!po || t.g.indexOf(String(po.o.group_id)) < 0) return NO('Tes ini bukan untuk Anda.');
-    let h = findH(pid, t.id);
-    if (!h) {
-      const now = Date.now(), s = pd(t.mulai), e = pd(t.selesai);
-      if ((s && now < s) || (e && now > e)) return NO('Tes belum dibuka atau sudah ditutup.');
-      if (t.token) {
-        const k = tokenNow();
-        if (!b.token || !k.c || k.d !== today() || String(b.token).trim().toUpperCase() !== k.c.toUpperCase()) return NO('Token salah atau belum dibuat.');
-      }
-      if (!t.ids.length) return NO('Soal belum tersedia.');
-      h = withLock(() => findH(pid, t.id) || newH(pid, t, bn.soal));
-    } else if (h.fin) return NO('Tes sudah selesai.');
-    const soal = h.ids.map(i => bn.soal[i]).filter(Boolean).map(s => ({ id: s.id, q: s.q, o: s.o }));
-    return { ok: true, h: { id: h.id, tes: h.tes, p: h.p, mulai: h.mulai, ids: h.ids, perm: h.perm, a: h.a, fin: false, x: h.x }, soal: soal };
-  },
-
-  pans: b => {
-    const pid = chk(b.tk);
-    if (!pid) return NO('Sesi berakhir.');
-    const ro = rowObj('Hasil', b.h);
-    if (!ro || String(ro.o.peserta_id) !== pid) return NO('Data tidak ditemukan.');
-    const h = T.Hasil.fromRow(ro.o);
-    if (h.fin) return { ok: true, fin: true };
-    const t = bundle(h.tes).t;
-    if (t && Date.now() > endT(h, t) + 60000) return { ok: false, err: 'Waktu habis.', over: true };
-    ro.sh.getRange(ro.r, ro.h.indexOf('jawaban') + 1).setValue(ansStr(clean(b.a, h.ids)));
-    return { ok: true };
-  },
-
-  pfin: b => {
-    const pid = chk(b.tk);
-    if (!pid) return NO('Sesi berakhir.');
-    const ro = rowObj('Hasil', b.h);
-    if (!ro || String(ro.o.peserta_id) !== pid) return NO('Data tidak ditemukan.');
-    const h = T.Hasil.fromRow(ro.o), bn = bundle(h.tes), t = bn.t;
-    if (!t) return NO('Tes tidak ditemukan.');
-    if (!h.fin) {
-      if (b.a && Date.now() <= endT(h, t) + 60000) h.a = clean(b.a, h.ids);
-      ro.sh.getRange(ro.r, ro.h.indexOf('jawaban') + 1).setValue(ansStr(h.a));
-      ro.sh.getRange(ro.r, ro.h.indexOf('selesai') + 1).setValue(true);
-      h.fin = true;
+/* ---------- sync admin/guru ---------- */
+function sync(a, ch) {
+  const w = who(a); if (!w) return err('Login tidak valid.');
+  const gu = w.role === 'guru', myM = gu ? (w.g.m || []) : null;
+  if (!gu && ch.cfg) {
+    const c = getKV('cfg') || {}, n = ch.cfg;
+    setKV('cfg', { nama: n.nama, ket: n.ket, kepala: n.kepala || '', nipk: n.nipk || '', au: n.au || c.au || 'admin', ap: n.ap || c.ap || '' });
+  }
+  if (ch.token) { const tm = tokMap(); Object.keys(ch.token).forEach(k => { if (!gu || myM.indexOf(k) >= 0) tm[k] = ch.token[k]; }); setKV('token', tm); }
+  for (const t of TABLES) {
+    if (!ch[t] || (gu && GURU_TABLES.indexOf(t) < 0)) continue;
+    const up = ch[t].up || [], rm = ch[t].rm || [];
+    const ex = {}; readT(t).forEach(o => ex[o.id] = o);
+    let allowed = () => true;
+    if (gu) {
+      const topikOk = {}, tesOk = {};
+      readT('topik').forEach(x => { if (myM.indexOf(x.m) >= 0) topikOk[x.id] = 1; });
+      readT('tes').forEach(x => { if (myM.indexOf(x.m) >= 0) tesOk[x.id] = 1; });
+      allowed = o => t === 'topik' ? myM.indexOf(o.m) >= 0 : t === 'soal' ? !!topikOk[o.topik] : t === 'tes' ? myM.indexOf(o.m) >= 0 : !!tesOk[o.tes];
     }
-    const out = { id: h.id, fin: true, a: h.a };
-    if (t.th) out.nilai = grade(h, t, bn.soal);
-    return { ok: true, h: out };
+    let list = up.filter(o => allowed(o) && (!ex[o.id] || allowed(ex[o.id])));
+    if (t === 'hasil') {
+      const tesAll = {}; readT('tes').forEach(x => tesAll[x.id] = x);
+      list = list.filter(r => ex[r.id]).map(r => {
+        const h = ex[r.id]; h.fin = !!(h.fin || r.fin); h.x = +r.x || 0;
+        if (h.fin && tesAll[h.tes]) h.nilai = score(h, tesAll[h.tes]);
+        return h;
+      });
+    }
+    const rmOk = rm.filter(id => ex[id] && allowed(ex[id]));
+    if (t === 'soal') {
+      const gone = [];
+      list.forEach(o => { const e = ex[o.id]; if (e) { const keep = imgIds(o); imgIds(e).forEach(i => { if (keep.indexOf(i) < 0) gone.push(i); }); } });
+      rmOk.forEach(id => imgIds(ex[id]).forEach(i => gone.push(i)));
+      removeImgs(gone);
+    }
+    upsert(t, list);
+    remove(t, rmOk);
   }
-};
-
-/* ---------- pintu masuk ---------- */
-function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
-
-function doGet() { return ContentService.createTextOutput('API CBT aktif.'); }
-
-function doPost(e) {
-  let b;
-  try { b = JSON.parse(e.postData.contents); } catch (x) { return out(NO('Permintaan tidak valid.')); }
-  const f = A[b.action];
-  if (!f) return out(NO('Aksi tidak dikenal.'));
-  try { return out(f(b)); } catch (x) {
-    const m = String(x && x.message || x);
-    return out(NO(/lock/i.test(m) ? 'Server sibuk, coba lagi.' : 'Kesalahan server: ' + m));
-  }
+  return ok();
 }
+
+/* ---------- entry ---------- */
+function doGet() { return ContentService.createTextOutput('CBT API OK'); }
+function doPost(e) {
+  let b; try { b = JSON.parse(e.postData.contents); } catch (x) { return err('Permintaan tidak valid.'); }
+  const lock = LockService.getScriptLock();
+  const writes = ['sync', 'pstart', 'pans', 'pfin', 'gprof', 'imgup', 'imgclean', 'export'].indexOf(b.action) >= 0;
+  try {
+    if (writes && !lock.tryLock(25000)) return err('Server sibuk, coba lagi.');
+    return route(b);
+  } catch (x) { return err('Kesalahan server: ' + x.message); }
+  finally { if (writes) try { lock.releaseLock(); } catch (z) {} }
+}
+function route(b) {
+  switch (b.action) {
+    case 'info': return ok({ cfg: cfgPub() });
+    case 'alogin': { const w = who({ u: b.u, p: b.p }); return w ? ok({ S: buildS(w) }) : err('Username atau password salah.'); }
+    case 'sync': return sync(b.auth, b.ch || {});
+    case 'plogin': {
+      const pes = readT('pes').find(x => x.u === b.u && x.p === b.p);
+      if (!pes) return err('Username atau password salah.');
+      return ok({ now: Date.now(), tk: sign(pes), pes: { id: pes.id, u: pes.u, nama: pes.nama, g: pes.g }, cfg: cfgPub(), grp: readT('grp'), mapel: readT('mapel'),
+        tes: readT('tes').filter(t => (t.g || []).indexOf(pes.g) >= 0), hasil: readT('hasil').filter(h => h.p === pes.id) });
+    }
+    case 'pstart': {
+      const pes = pesFrom(b.tk); if (!pes) return err('Sesi tidak valid, silakan login ulang.');
+      const r = getOne('tes', b.tes); if (!r || (r.obj.g || []).indexOf(pes.g) < 0) return err('Tes tidak tersedia.');
+      const T = r.obj, now = Date.now();
+      let h = readT('hasil').find(x => x.tes === T.id && x.p === pes.id);
+      if (h && h.fin) return err('Tes sudah selesai.');
+      const sm = {}; readT('soal').forEach(s => sm[s.id] = s);
+      if (!h) {
+        if (T.mulai && now < new Date(T.mulai).getTime()) return err('Tes belum dibuka.');
+        if (T.selesai && now > new Date(T.selesai).getTime()) return err('Tes sudah ditutup.');
+        if (T.token) { const tk = tokMap()[T.m] || {}; if (!b.token || String(b.token).trim().toUpperCase() !== tk.c || tk.d !== today()) return err('Token salah atau kedaluwarsa.'); }
+        if (!T.ids || !T.ids.length) return err('Soal belum tersedia.');
+        const ids = (T.as ? shuf(T.ids) : T.ids.slice()).filter(i => sm[i]), perm = {};
+        ids.forEach(i => { const n = sm[i].o.map((_, k) => k); perm[i] = T.aj ? shuf(n) : n; });
+        h = { id: uid(), tes: T.id, p: pes.id, mulai: now, x: 0, fin: false, nilai: 0, a: {}, ids, perm };
+        upsert('hasil', [h]);
+      }
+      return ok({ now: Date.now(), h, soal: h.ids.map(i => ({ id: i, topik: sm[i].topik, q: sm[i].q, o: sm[i].o, img: sm[i].img || '', oi: sm[i].oi || [] })) });
+    }
+    case 'imgup': {
+      const w = who(b.auth); if (!w) return err('Login tidak valid.');
+      const d = String(b.d || '');
+      if (d.indexOf('data:image/') !== 0 || d.length > 300000) return err('Gambar tidak valid atau terlalu besar.');
+      const id = 'i' + uid() + uid(), s = sh('gambar'), rows = [];
+      for (let i = 0, n = 0; i < d.length; i += 45000, n++) rows.push([id, String(n), d.slice(i, i + 45000)]);
+      s.getRange(s.getLastRow() + 1, 1, rows.length, 3).setValues(rows);
+      return ok({ id });
+    }
+    case 'img': {
+      if (b.auth ? !who(b.auth) : !pesFrom(b.tk)) return err('Tidak diizinkan.');
+      const s = sh('gambar'), f = s.getRange('A:A').createTextFinder(String(b.id || '')).matchEntireCell(true).findAll();
+      if (!f.length) return err('Gambar tidak ditemukan.');
+      const parts = f.map(x => { const r = s.getRange(x.getRow(), 1, 1, 3).getValues()[0]; return { n: parseInt(r[1], 10), t: String(r[2]) }; }).sort((a, c) => a.n - c.n);
+      return ok({ d: parts.map(p => p.t).join('') });
+    }
+    case 'imgclean': {
+      const w = who(b.auth); if (!w || w.role !== 'admin') return err('Hanya admin.');
+      const keep = {}; readT('soal').forEach(s => imgIds(s).forEach(i => keep[i] = 1));
+      const s = sh('gambar'), last = s.getLastRow(), seen = {}; let n = 0;
+      if (last > 1) { const v = s.getRange(2, 1, last - 1, 1).getValues(); for (let i = v.length - 1; i >= 0; i--) { const id = String(v[i][0]); if (!keep[id]) { if (!seen[id]) { seen[id] = 1; n++; } s.deleteRow(i + 2); } } }
+      return ok({ n });
+    }
+    case 'export': {
+      const w = who(b.auth); if (!w) return err('Login tidak valid.');
+      const T = (getOne('tes', b.tes) || {}).obj; if (!T) return err('Tes tidak ditemukan.');
+      if (w.role === 'guru' && (w.g.m || []).indexOf(T.m) < 0) return err('Tes ini bukan mapel Anda.');
+      const d = b.d || {}, mp = ((getOne('mapel', T.m) || {}).obj || {}).nama || '-';
+      const nm = s => String(s).replace(/[\[\]\*\?:\/\\]/g, ' ').slice(0, 40), base = nm(mp) + ' - ' + nm(T.nama);
+      const meta = [['Mapel', mp], ['Tes', T.nama], ['KKM', d.kkm], ['Peserta selesai', d.n], ['Rata-rata', d.avg], ['Diekspor', Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm')], ['']];
+      const sA = 'Analisis ' + base, sR = 'Remedial ' + base;
+      writeSheet(sA, [['ANALISIS BUTIR SOAL']].concat(meta, [['No', 'Soal', '% Benar', 'Kesukaran', 'Daya Pembeda', 'Ket. Daya Pembeda']], d.items || []));
+      writeSheet(sR, [['PROGRAM REMEDIAL DAN PENGAYAAN']].concat(meta,
+        [['REMEDIAL (nilai di bawah KKM)'], ['Nama', 'Group', 'Nilai', 'No. soal salah']], d.rem || [],
+        [[''], ['PENGAYAAN (nilai mencapai KKM)'], ['Nama', 'Group', 'Nilai', 'No. soal salah']], d.pen || [],
+        [[''], ['BUTIR SOAL PERLU PENGUATAN (< 60% benar)'], ['No', 'Soal', '% Benar']], d.lemah || []));
+      return ok({ sheets: [sA, sR] });
+    }
+    case 'gprof': {
+      const w = who(b.auth); if (!w || w.role !== 'guru') return err('Hanya untuk akun guru.');
+      const r = getOne('guru', w.g.id); if (!r) return err('Guru tidak ditemukan.');
+      const g = r.obj; g.nama = b.n || g.nama; g.nip = b.nip || ''; if (b.p) g.p = b.p;
+      putOne('guru', r.row, g); return ok();
+    }
+    case 'pans': {
+      const pes = pesFrom(b.tk); if (!pes) return err('Sesi tidak valid.');
+      const r = getOne('hasil', b.h); if (!r || r.obj.p !== pes.id) return err('Data tidak ditemukan.');
+      const h = r.obj; if (h.fin) return ok();
+      const T = (getOne('tes', h.tes) || {}).obj; if (!T) return err('Tes tidak ditemukan.');
+      if (Date.now() > endMs(h, T) + 30000) return err('Waktu habis.');
+      h.a = clean(b.a, h); putOne('hasil', r.row, h); return ok();
+    }
+    case 'pfin': {
+      const pes = pesFrom(b.tk); if (!pes) return err('Sesi tidak valid.');
+      const r = getOne('hasil', b.h); if (!r || r.obj.p !== pes.id) return err('Data tidak ditemukan.');
+      const h = r.obj, T = (getOne('tes', h.tes) || {}).obj; if (!T) return err('Tes tidak ditemukan.');
+      if (!h.fin) {
+        if (Date.now() <= endMs(h, T) + 60000) h.a = clean(b.a, h);
+        h.fin = true; h.nilai = score(h, T); putOne('hasil', r.row, h);
+      }
+      return ok({ h: { fin: true, nilai: h.nilai, a: h.a } });
+    }
+  }
+  return err('Aksi tidak dikenal.');
+}
+function clean(a, h) { const o = {}; h.ids.forEach(i => { if (a && a[i] !== undefined && a[i] !== null) o[i] = +a[i]; }); return o; }
