@@ -32,6 +32,7 @@ table{border-collapse:collapse;width:100%;font-size:13.5px}th,td{border-bottom:1
 .po{display:none}@media print{.side,.no{display:none!important}.main{padding:0}.po{display:block}}
 </style><script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head><body>
 <div id="root"></div><div id="md" hidden></div><div id="ld" hidden>Memproses…</div>
 <script>
@@ -109,7 +110,11 @@ dash(){const fin=S.hasil.filter(h=>h.fin).length;return`<h1>Dashboard</h1><div c
 <p class=mu>Data tersimpan di Google Sheets. Klik “Muat ulang data” untuk melihat hasil ujian terbaru dari peserta.</p></div>`},
 topik(){return`<h1>Topik</h1><div class=card><div class=row>${bt('+ Tambah Topik',"tForm()",'')}</div>${tbl(['No','Mapel','Nama','Deskripsi','Soal',''],S.topik.map((t,i)=>[i+1,E(mN(t.m)),E(t.nama),E(t.desk),S.soal.filter(s=>s.topik===t.id).length,bt('Edit',`tForm('${t.id}')`)+' '+bt('Hapus',`delTopik('${t.id}')`,'d')]))}</div>`},
 soal(){const t=tsel();return`<h1>Soal</h1><div class=card><div class=row>Topik: ${topSel('t')} ${bt('+ Tambah Soal',"sForm()",'')}</div>${tbl(['No','Soal','Jawaban Benar',''],S.soal.filter(s=>s.topik===t).map((s,i)=>[i+1,E(s.q)+imgTag(s.img,'max-height:70px;max-width:160px;display:block;margin-top:4px;border-radius:6px'),'ABCDE'[s.k]+'. '+E(s.o[s.k]||'')+imgTag((s.oi||[])[s.k],'max-height:40px;display:block'),bt('Edit',`sForm('${s.id}')`)+' '+bt('Hapus',`del('soal','${s.id}')`,'d')]))}</div>`},
-imp(){const t=tsel();return`<h1>Import Soal</h1><div class=card><div class=row>Ke topik: ${topSel('t')}</div><p class=mu>Satu soal per baris: <code>Pertanyaan | Opsi A | Opsi B | Opsi C | Opsi D | Kunci(A-E)</code>. Bisa tempel dari Excel (kolom tab) atau unggah .txt/.csv.</p><textarea id=ti style="min-height:180px"></textarea><div class=row><input type=file accept=".txt,.csv" onchange="this.files[0].text().then(x=>$('#ti').value=x)" style="width:auto"><button onclick="impSoal()">Import</button></div></div>`},
+imp(){return`<h1>Import Soal</h1><div class=card><div class=row>Ke topik: ${topSel('t')}</div>
+<p class=mu>Format kolom: <code>Pertanyaan | Opsi A | Opsi B | Opsi C | Opsi D | Opsi E (opsional) | Kunci (A-E)</code>. Kolom Opsi E boleh dikosongkan. Pemisah bisa tab (tempel dari Excel), titik koma, koma, atau garis tegak |. Baris judul otomatis dilewati.</p>
+<div class=row><button class=s onclick="tmplXlsx()">⬇ Template Excel (.xlsx)</button><button class=s onclick="tmplCsv()">⬇ Template CSV</button></div>
+<label>Unggah file (.xlsx, .xls, .csv, .txt) atau tempel di kotak ini</label><div class=row><input type=file accept=".xlsx,.xls,.csv,.txt" onchange="loadImpFile(this)" style="width:auto"></div>
+<textarea id=ti style="min-height:180px" oninput="impCount()"></textarea><p class=mu id=ic></p><div class=row><button onclick="impSoal()">Import</button></div><p class=mu>Gambar tidak bisa diimport massal; tambahkan lewat menu Soal → Edit.</p></div>`},
 grp(){return`<h1>Group</h1><div class=card><div class=row>${bt('+ Tambah Group',"gForm()",'')}</div>${tbl(['No','Nama Group','Peserta',''],S.grp.map((g,i)=>[i+1,E(g.nama),S.pes.filter(p=>p.g===g.id).length,bt('Edit',`gForm('${g.id}')`)+' '+bt('Hapus',`del('grp','${g.id}')`,'d')]))}</div>`},
 pes(){const g=sel.g||'';return`<h1>Peserta</h1><div class=card><div class=row>Group: <select onchange="sel.g=this.value;render()"><option value="">Semua</option>${S.grp.map(x=>`<option value="${x.id}" ${g===x.id?'selected':''}>${E(x.nama)}</option>`).join('')}</select>${bt('+ Tambah Peserta',"pForm()",'')}</div>${tbl(['No','Username','Password','Nama','Group',''],S.pes.filter(p=>!g||p.g===g).map((p,i)=>[i+1,E(p.u),E(p.p),E(p.nama),E(gN(p.g)),bt('Edit',`pForm('${p.id}')`)+' '+bt('Hapus',`del('pes','${p.id}')`,'d')]))}</div>`},
 impp(){return`<h1>Import Peserta</h1><div class=card><p class=mu>Satu peserta per baris: <code>username, password, nama lengkap, group</code> (pisah koma/tab; group baru dibuat otomatis).</p><textarea id=pi style="min-height:180px"></textarea><div class=row><input type=file accept=".txt,.csv" onchange="this.files[0].text().then(x=>$('#pi').value=x)" style="width:auto"><button onclick="impPes()">Import</button></div></div>`},
@@ -192,7 +197,34 @@ if(PBUSY>0){alert('Tunggu unggahan gambar selesai.');return false}
 const idx=[0,1,2,3,4].filter(n=>o['o'+n].trim()||o['i'+n]),opts=idx.map(n=>o['o'+n].trim()),oi=idx.map(n=>o['i'+n]),k=idx.indexOf(+o.k);
 if((!o.q.trim()&&!o.img)||idx.length<2||k<0){alert('Isi soal (teks atau gambar), minimal 2 opsi, dan pastikan kunci menunjuk opsi yang terisi.');return false}
 if(i){Object.assign(s,{q:o.q,o:opts,k,img:o.img,oi})}else S.soal.push({id:uid(),topik:tsel(),q:o.q,o:opts,k,img:o.img,oi})})}
-function impSoal(){const t=tsel();if(!t)return alert('Buat topik dulu.');let n=0;$('#ti').value.split('\n').forEach(l=>{const c=l.split(l.includes('|')?'|':'\t').map(x=>x.trim());if(c.length<4)return;const key='ABCDE'.indexOf((c[c.length-1]||'').toUpperCase());const o=c.slice(1,-1).filter(Boolean);if(key<0||key>=o.length)return;S.soal.push({id:uid(),topik:t,q:c[0],o,k:key});n++});save();alert(n+' soal berhasil diimport.');render()}
+const TMPL=[['Pertanyaan','Opsi A','Opsi B','Opsi C','Opsi D','Opsi E (opsional)','Kunci (A-E)'],['Ibu kota Indonesia adalah ...','Bandung','Jakarta','Surabaya','Medan','','B'],['Hasil dari 12 + 8 adalah ...','18','20','22','24','','B'],['Planet terdekat dengan Matahari adalah ...','Venus','Bumi','Merkurius','Mars','Jupiter','C']];
+const tmplCsv=()=>sv('template-import-soal.csv',TMPL.map(r=>r.map(q2).join(',')).join('\n'));
+function tmplXlsx(){if(!window.XLSX)return alert('Pustaka Excel belum termuat (butuh internet). Gunakan Template CSV atau muat ulang halaman.');const ws=XLSX.utils.aoa_to_sheet(TMPL);ws['!cols']=[{wch:48},{wch:20},{wch:20},{wch:20},{wch:20},{wch:20},{wch:12}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Soal');XLSX.writeFile(wb,'template-import-soal.xlsx')}
+function parseRows(txt){txt=String(txt||'').replace(/^\ufeff/,'');const first=(txt.split(/\r?\n/).find(l=>l.trim())||'').replace(/"[^"]*"/g,'');
+let d=',',best=0;[['\t','\t'],['|','|'],[';',';'],[',',',']].forEach(([k,v])=>{const n=first.split(k).length-1;if(n>best){best=n;d=v}});
+const rows=[];let row=[],f='',q=false;
+for(let i=0;i<txt.length;i++){const c=txt[i];if(q){if(c==='"'){if(txt[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+else if(c==='"'&&f==='')q=true;else if(c===d){row.push(f);f=''}
+else if(c==='\n'||c==='\r'){if(c==='\r'&&txt[i+1]==='\n')i++;row.push(f);f='';if(row.some(x=>x.trim()))rows.push(row);row=[]}else f+=c}
+row.push(f);if(row.some(x=>x.trim()))rows.push(row);return rows.map(r=>r.map(x=>x.trim()))}
+function impCount(){const e=$('#ic');if(e){const n=parseRows($('#ti').value).filter((c,i)=>!(i===0&&/^(pertanyaan|soal)/i.test(c[0])&&/(kunci|jawaban)/i.test(c[c.length-1]))).length;e.textContent=n?n+' baris soal terdeteksi.':''}}
+async function loadImpFile(inp){const f=inp.files[0];if(!f)return;let t;
+if(/\.xlsx?$/i.test(f.name)){if(!window.XLSX)return alert('Pustaka Excel belum termuat (butuh internet). Simpan file sebagai CSV lalu unggah lagi.');
+const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}),a=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
+t=a.map(r=>r.map(x=>String(x).replace(/[\t\r\n]+/g,' ')).join('\t')).join('\n')}else t=await f.text();
+$('#ti').value=t;impCount()}
+function impSoal(){const t=tsel();if(!t)return alert('Buat topik dulu.');const rows=parseRows($('#ti').value);if(!rows.length)return alert('Belum ada data. Tempel atau unggah file dulu.');
+let n=0,dup=0;const bad=[],have=new Set(S.soal.filter(s=>s.topik===t).map(s=>String(s.q).trim().toLowerCase()));
+rows.forEach((c,ri)=>{if(ri===0&&/^(pertanyaan|soal)/i.test(c[0])&&/(kunci|jawaban)/i.test(c[c.length-1]))return;const no=ri+1;
+if(c.length<4){bad.push('Baris '+no+': kolom kurang dari 4');return}
+const kr=(c[c.length-1]||'').toUpperCase(),cols=c.slice(1,-1);let ki='ABCDE'.indexOf(kr);if(ki<0&&/^[1-5]$/.test(kr))ki=+kr-1;
+if(!c[0]){bad.push('Baris '+no+': pertanyaan kosong');return}
+if(cols.length>5){bad.push('Baris '+no+': lebih dari 5 opsi');return}
+if(ki<0||!cols[ki]){bad.push('Baris '+no+': kunci "'+c[c.length-1]+'" tidak valid/opsinya kosong');return}
+const o=cols.filter(Boolean);if(o.length<2){bad.push('Baris '+no+': minimal 2 opsi');return}
+const k=cols.slice(0,ki).filter(Boolean).length,key=c[0].trim().toLowerCase();if(have.has(key)){dup++;return}have.add(key);
+S.soal.push({id:uid(),topik:t,q:c[0],o,k,img:'',oi:o.map(()=>'')});n++});
+save();alert(n+' soal berhasil diimport.'+(dup?'\n'+dup+' soal dilewati (sudah ada di topik ini).':'')+(bad.length?'\n\n'+bad.length+' baris dilewati:\n'+bad.slice(0,10).join('\n')+(bad.length>10?'\n...':''):''));render()}
 function gForm(i){const g=S.grp.find(x=>x.id===i)||{};form('Group',[{k:'n',l:'Nama Group',v:g.nama}],o=>{if(!o.n.trim())return false;if(i)g.nama=o.n;else S.grp.push({id:uid(),nama:o.n})})}
 function pForm(i){const p=S.pes.find(x=>x.id===i)||{};if(!S.grp.length)return alert('Tambah group dulu.');form('Peserta',[{k:'u',l:'Username',v:p.u},{k:'p',l:'Password',v:p.p},{k:'n',l:'Nama Lengkap',v:p.nama},{k:'g',l:'Group',t:'select',o:S.grp.map(x=>[x.id,x.nama]),v:p.g}],o=>{if(!o.u.trim()||!o.p.trim())return false;if(S.pes.some(x=>x.u===o.u&&x.id!==i)){alert('Username sudah dipakai.');return false}if(i)Object.assign(p,{u:o.u,p:o.p,nama:o.n,g:o.g});else S.pes.push({id:uid(),u:o.u,p:o.p,nama:o.n,g:o.g})})}
 function impPes(){let n=0;$('#pi').value.split('\n').forEach(l=>{const c=l.split(l.includes('\t')?'\t':',').map(x=>x.trim());if(c.length<3||!c[0]||S.pes.some(x=>x.u===c[0]))return;let g=S.grp.find(x=>x.nama===c[3]);if(!g&&c[3]){g={id:uid(),nama:c[3]};S.grp.push(g)}S.pes.push({id:uid(),u:c[0],p:c[1],nama:c[2],g:(g||S.grp[0]||{}).id});n++});save();alert(n+' peserta diimport.');render()}
