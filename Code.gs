@@ -240,8 +240,8 @@ function route(b) {
       const T = (getOne('tes', b.tes) || {}).obj; if (!T) return err('Tes tidak ditemukan.');
       if (w.role === 'guru' && (w.g.m || []).indexOf(T.m) < 0) return err('Tes ini bukan mapel Anda.');
       const d = b.d || {}, mp = ((getOne('mapel', T.m) || {}).obj || {}).nama || '-';
-      const nm = s => String(s).replace(/[\[\]\*\?:\/\\]/g, ' ').slice(0, 40), base = nm(mp) + ' - ' + nm(T.nama);
-      const meta = [['Mapel', mp], ['Tes', T.nama], ['KKM', d.kkm], ['Peserta selesai', d.n], ['Rata-rata', d.avg], ['Diekspor', Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm')], ['']];
+      const nm = s => String(s).replace(/[\[\]\*\?:\/\\]/g, ' ').slice(0, 30), base = nm(mp) + ' - ' + nm(T.nama) + (d.kelas ? ' - ' + nm(d.kelas) : '');
+      const meta = [['Mapel', mp], ['Tes', T.nama], ['Kelas', d.kelas || '-'], ['KKM', d.kkm], ['Peserta selesai', d.n], ['Rata-rata', d.avg], ['Diekspor', Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm')], ['']];
       const sA = 'Analisis ' + base, sR = 'Remedial ' + base;
       writeSheet(sA, [['ANALISIS BUTIR SOAL']].concat(meta, [['No', 'Soal', '% Benar', 'Kesukaran', 'Daya Pembeda', 'Ket. Daya Pembeda']], d.items || []));
       writeSheet(sR, [['PROGRAM REMEDIAL DAN PENGAYAAN']].concat(meta,
