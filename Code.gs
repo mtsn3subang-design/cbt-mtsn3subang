@@ -36,6 +36,12 @@ function writeSheet(name, rows) {
   const rg = s.getRange(1, 1, v.length, w); rg.setNumberFormat('@'); rg.setValues(v);
   s.getRange(1, 1, 1, 1).setFontWeight('bold');
 }
+function extractId(s) { const m = String(s || '').match(/[-\w]{25,}/); return m ? m[0] : ''; }
+function setByLabel(s, label, val) {
+  const v = s.getRange(1, 1, 40, 1).getValues();
+  for (let i = 0; i < v.length; i++) if (String(v[i][0]).trim() === label) { s.getRange(i + 1, 2).setValue(val); return true; }
+  return false;
+}
 function readT(n) {
   const s = sh(n), last = s.getLastRow();
   if (last < 2) return [];
@@ -93,11 +99,11 @@ function pesFrom(tk) {
 function tokMap() { const t = getKV('token') || {}; return t.c !== undefined ? {} : t; }
 function cfgPub() { const c = getKV('cfg') || {}; return { nama: c.nama || 'CBT MTsN 3 Subang', ket: c.ket || 'Ujian Online Berbasis Komputer', kepala: c.kepala || '', nipk: c.nipk || '' }; }
 function buildS(w) {
-  const c = getKV('cfg') || {}, cfg = Object.assign(cfgPub(), { au: c.au || 'admin' });
+  const c = getKV('cfg') || {}, cfg = Object.assign(cfgPub(), { au: c.au || 'admin', tpl: c.tpl || '' });
   const S = { cfg, mapel: readT('mapel'), guru: readT('guru'), topik: readT('topik'), soal: readT('soal'), grp: readT('grp'), pes: readT('pes'), tes: readT('tes'), hasil: readT('hasil'), token: tokMap(), role: w.role };
   if (w.role === 'admin') { if (!c.ap) S.warn = 'Akun admin masih default (admin / admin123). Segera ganti di Pengaturan & Backup.'; return S; }
   const m = w.g.m || [];
-  S.role = 'guru'; delete S.cfg.au;
+  S.role = 'guru'; delete S.cfg.au; delete S.cfg.tpl;
   S.guru = [w.g];
   S.token = Object.fromEntries(Object.entries(S.token).filter(e => m.indexOf(e[0]) >= 0));
   S.mapel = S.mapel.filter(x => m.indexOf(x.id) >= 0);
@@ -128,7 +134,7 @@ function sync(a, ch) {
   const gu = w.role === 'guru', myM = gu ? (w.g.m || []) : null;
   if (!gu && ch.cfg) {
     const c = getKV('cfg') || {}, n = ch.cfg;
-    setKV('cfg', { nama: n.nama, ket: n.ket, kepala: n.kepala || '', nipk: n.nipk || '', au: n.au || c.au || 'admin', ap: n.ap || c.ap || '' });
+    setKV('cfg', { nama: n.nama, ket: n.ket, kepala: n.kepala || '', nipk: n.nipk || '', au: n.au || c.au || 'admin', ap: n.ap || c.ap || '', tpl: n.tpl !== undefined ? n.tpl : (c.tpl || '') });
   }
   if (ch.token) { const tm = tokMap(); Object.keys(ch.token).forEach(k => { if (!gu || myM.indexOf(k) >= 0) tm[k] = ch.token[k]; }); setKV('token', tm); }
   for (const t of TABLES) {
@@ -169,7 +175,7 @@ function doGet() { return ContentService.createTextOutput('CBT API OK'); }
 function doPost(e) {
   let b; try { b = JSON.parse(e.postData.contents); } catch (x) { return err('Permintaan tidak valid.'); }
   const lock = LockService.getScriptLock();
-  const writes = ['sync', 'pstart', 'pans', 'pfin', 'gprof', 'imgup', 'imgclean', 'export'].indexOf(b.action) >= 0;
+  const writes = ['sync', 'pstart', 'pans', 'pfin', 'gprof', 'imgup', 'imgclean', 'export', 'sinkron', 'pviol'].indexOf(b.action) >= 0;
   try {
     if (writes && !lock.tryLock(25000)) return err('Server sibuk, coba lagi.');
     return route(b);
@@ -244,6 +250,42 @@ function route(b) {
         [[''], ['BUTIR SOAL PERLU PENGUATAN (< 60% benar)'], ['No', 'Soal', '% Benar']], d.lemah || []));
       return ok({ sheets: [sA, sR] });
     }
+    case 'sinkron': {
+      const w = who(b.auth); if (!w) return err('Login tidak valid.');
+      const T = (getOne('tes', b.tes) || {}).obj; if (!T) return err('Tes tidak ditemukan.');
+      if (w.role === 'guru' && (w.g.m || []).indexOf(T.m) < 0) return err('Tes ini bukan mapel Anda.');
+      const c = getKV('cfg') || {}, tid = extractId(c.tpl);
+      if (!tid) return err('Link template analisis belum diisi. Admin: Pengaturan & Backup → Ubah identitas.');
+      let ss; try { ss = SpreadsheetApp.openById(tid); } catch (x) { return err('Template tidak bisa dibuka. Periksa link dan pastikan akun pemilik skrip punya akses edit.'); }
+      const sI = ss.getSheetByName('IDENTITAS'), sK = ss.getSheetByName('KUNCI'), sJ = ss.getSheetByName('JAWABAN');
+      if (!sI || !sK || !sJ) return err('Sheet IDENTITAS/KUNCI/JAWABAN tidak ditemukan di template.');
+      const grp = readT('grp').find(x => x.id === b.g); if (!grp) return err('Pilih kelas terlebih dahulu.');
+      const sm = {}; readT('soal').forEach(s => sm[s.id] = s);
+      const tm = {}; readT('topik').forEach(x => tm[x.id] = x);
+      const ids = (T.ids || []).filter(i => sm[i]).slice(0, 40);
+      if (!ids.length) return err('Tes ini belum memiliki soal.');
+      const L = 'ABCDE', warn = [];
+      if ((T.ids || []).length > 40) warn.push('Soal lebih dari 40: hanya 40 soal pertama yang dikirim.');
+      if (ids.some(i => sm[i].o.length > 4)) warn.push('Ada soal 5 opsi; template hanya mendukung opsi A-D.');
+      const mp = ((getOne('mapel', T.m) || {}).obj || {}).nama || '';
+      const gr = w.role === 'guru' ? w.g : (readT('guru').find(x => (x.m || []).indexOf(T.m) >= 0) || {});
+      setByLabel(sI, 'Mata Pelajaran', mp); setByLabel(sI, 'Kelas', grp.nama); setByLabel(sI, 'Jenis Penilaian', T.nama);
+      if (gr.nama) setByLabel(sI, 'Guru Mata Pelajaran', gr.nama);
+      setByLabel(sI, 'NIP Guru', gr.nip || '-');
+      if (c.kepala) setByLabel(sI, 'Kepala Madrasah', c.kepala);
+      if (c.nipk) { sI.getRange('B16').setNumberFormat('@'); setByLabel(sI, 'NIP Kepala Madrasah', c.nipk); }
+      sK.getRange('B6:C45').clearContent();
+      sK.getRange(6, 2, ids.length, 2).setValues(ids.map(i => [L[sm[i].k], ((tm[sm[i].topik] || {}).nama || '') + ': ' + String(sm[i].q || '[soal bergambar]').slice(0, 90)]));
+      const hs = {}; readT('hasil').forEach(h => { if (h.tes === T.id && h.fin) hs[h.p] = h; });
+      const rows = readT('pes').filter(p => p.g === b.g && hs[p.id]).sort((a, c2) => String(a.nama).localeCompare(String(c2.nama))).slice(0, 50);
+      sJ.getRange('B6:B55').clearContent(); sJ.getRange('D6:D55').clearContent(); sJ.getRange('E6:AR55').clearContent();
+      if (rows.length) {
+        sJ.getRange(6, 2, rows.length, 1).setValues(rows.map(p => [p.nama]));
+        const rd = sJ.getRange(6, 4, rows.length, 1); rd.setNumberFormat('@'); rd.setValues(rows.map(p => [/^\d{8,}$/.test(String(p.u)) ? String(p.u) : '']));
+        sJ.getRange(6, 5, rows.length, ids.length).setValues(rows.map(p => ids.map(i => { const a = hs[p.id].a[i]; return (a === undefined || a === null) ? '' : L[a]; })));
+      }
+      return ok({ n: rows.length, k: ids.length, link: ss.getUrl(), warn: warn });
+    }
     case 'gprof': {
       const w = who(b.auth); if (!w || w.role !== 'guru') return err('Hanya untuk akun guru.');
       const r = getOne('guru', w.g.id); if (!r) return err('Guru tidak ditemukan.');
@@ -257,6 +299,22 @@ function route(b) {
       const T = (getOne('tes', h.tes) || {}).obj; if (!T) return err('Tes tidak ditemukan.');
       if (Date.now() > endMs(h, T) + 30000) return err('Waktu habis.');
       h.a = clean(b.a, h); putOne('hasil', r.row, h); return ok();
+    }
+    case 'pviol': {
+      const pes = pesFrom(b.tk); if (!pes) return err('Sesi tidak valid.');
+      const r = getOne('hasil', b.h); if (!r || r.obj.p !== pes.id) return err('Data tidak ditemukan.');
+      const h = r.obj, T = (getOne('tes', h.tes) || {}).obj; if (!T) return err('Tes tidak ditemukan.');
+      if (h.fin) return ok({ v: h.v || 0, fin: true, h: { fin: true, nilai: h.nilai, a: h.a } });
+      h.v = (h.v || 0) + 1;
+      h.vl = (h.vl || []).concat([{ t: Date.now(), j: String(b.j || '').slice(0, 60) }]).slice(-20);
+      const mx = T.anti === false ? 0 : (T.maxv === undefined ? 3 : (+T.maxv || 0));
+      let fin = false;
+      if (mx > 0 && h.v >= mx) {
+        if (Date.now() <= endMs(h, T) + 60000 && b.a) h.a = clean(b.a, h);
+        h.fin = true; h.nilai = score(h, T); fin = true;
+      }
+      putOne('hasil', r.row, h);
+      return ok({ v: h.v, fin: fin, h: fin ? { fin: true, nilai: h.nilai, a: h.a } : undefined });
     }
     case 'pfin': {
       const pes = pesFrom(b.tk); if (!pes) return err('Sesi tidak valid.');
