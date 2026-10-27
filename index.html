@@ -48,8 +48,19 @@ const LOGO='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAA
 const logoH=(px)=>`<div style="text-align:center;margin-bottom:8px"><img src="${LOGO}" alt="Logo MTsN 3 Subang" style="height:${px}px;width:auto"></div>`;
 const seed=()=>({cfg:{nama:'CBT MTsN 3 Subang',ket:'Ujian Online Berbasis Komputer'},mapel:[],guru:[],topik:[],soal:[],grp:[],pes:[],tes:[],token:{},hasil:[],role:'admin'});
 let PEND={},PBUSY=0,OFF=0,S=seed(),PUB={...S.cfg},AU=null,SNAP={},STAT='',TK='';
-const api=async b=>{try{const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(b)});return await r.json()}catch(e){return{ok:false,err:'Koneksi gagal. Periksa internet atau URL API. ('+(e.message||e)+')'}}};
-const busy=on=>{$('#ld').hidden=!on};
+const RETRY={plogin:1,pstart:1,pans:1,pfin:1,img:1,info:1};
+/* ====== PENGATURAN BEBAN SERVER (aman untuk ±700 peserta bersamaan) ====== */
+const LOGIN_JITTER=4000,   /* ms: sebar waktu login/mulai tes agar tidak serentak */
+ AUTO_JITTER=10000,        /* ms: sebar pengiriman otomatis saat waktu habis */
+ SYNC_MIN=40000,SYNC_RND=30000; /* ms: simpan jawaban ke server tiap 40–70 detik */
+let PT_AT=0;
+const wait=ms=>new Promise(z=>setTimeout(z,ms));
+const lsSet=(id,a)=>{try{localStorage.setItem('cbt_a_'+id,JSON.stringify(a))}catch(e){}},lsGet=id=>{try{return JSON.parse(localStorage.getItem('cbt_a_'+id)||'null')}catch(e){return null}},lsDel=id=>{try{localStorage.removeItem('cbt_a_'+id)}catch(e){}};
+const api=async b=>{const max=RETRY[b.action]?8:1;let r;for(let i=0;i<max;i++){try{const x=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(b)});r=await x.json()}catch(e){r={ok:false,err:'Koneksi gagal. Periksa internet atau URL API. ('+(e.message||e)+')'}}
+if(r.ok||i===max-1||!/sibuk|Koneksi gagal|Kesalahan server|Failed to fetch|NetworkError|timeout/i.test(r.err||''))return r;
+{const m='Server sedang ramai, mencoba lagi ('+(i+2)+'/'+max+')…',l=$('#ld'),le=$('#le');if(l&&!l.hidden)l.textContent=m;else if(le&&b.action==='plogin')le.textContent=m}
+await wait(800+Math.random()*Math.min(20000,1500*Math.pow(2,i)))}return r};
+const busy=on=>{const e=$('#ld');e.hidden=!on;if(!on)e.textContent='Memproses…'};
 const status=t=>{STAT=t;const e=$('#ss');if(e)e.textContent=t};
 const td=()=>new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Jakarta'});
 const TB=['mapel','guru','topik','soal','grp','pes','tes','hasil'];
@@ -73,7 +84,12 @@ const footH=()=>`<footer class="ft no"><b>${E(FOOT_KET)}</b><br>© ${new Date().
 const titi=()=>(S.cfg.tempat||'Subang')+', '+new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
 const IMG={},IMGP={};
 const imgTag=(id,st)=>id?`<img data-img="${E(id)}" ${IMG[id]?`src="${IMG[id]}"`:''} alt="gambar" style="${st||'max-width:100%;max-height:320px;border-radius:8px;display:block;margin:8px 0'}">`:'';
-function getImg(id){if(IMG[id])return Promise.resolve(IMG[id]);return IMGP[id]||(IMGP[id]=api({action:'img',id,auth:AU,tk:TK}).then(r=>{delete IMGP[id];if(r.ok){IMG[id]=r.d;document.querySelectorAll('img[data-img="'+id+'"]').forEach(x=>x.src=r.d)}return IMG[id]}))}
+let IMGQ=[],IMGN=0;
+function imgPump(){while(IMGN<3&&IMGQ.length){const j=IMGQ.shift();IMGN++;j().finally(()=>{IMGN--;imgPump()})}}
+const imgSet=(id,d)=>document.querySelectorAll('img[data-img="'+id+'"]').forEach(x=>x.src=d);
+function getImg(id){if(IMG[id])return Promise.resolve(IMG[id]);
+if(/^(https?:\/\/|\.{0,2}\/?img\/)/i.test(id)){IMG[id]=id;imgSet(id,id);return Promise.resolve(id)}
+return IMGP[id]||(IMGP[id]=new Promise(res=>{IMGQ.push(()=>api({action:'img',id,auth:AU,tk:TK}).then(r=>{delete IMGP[id];if(r.ok){IMG[id]=r.d;imgSet(id,r.d)}res(IMG[id])}).catch(()=>{delete IMGP[id];res()}));imgPump()}))}
 function hydrate(){document.querySelectorAll('img[data-img]').forEach(im=>{const id=im.dataset.img;if(!IMG[id])getImg(id)})}
 function compress(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=()=>rej('File tidak terbaca');fr.onload=()=>{const im=new Image();im.onerror=()=>rej('File bukan gambar');im.onload=()=>{const sc=Math.min(1,900/Math.max(im.width,im.height)),w=Math.round(im.width*sc),h=Math.round(im.height*sc),c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);let q=.78,d;do{d=c.toDataURL('image/jpeg',q);q-=.1}while(d.length>140000&&q>.2);d.length>280000?rej('Gambar terlalu besar/rumit'):res(d)};im.src=fr.result};fr.readAsDataURL(file)})}
 async function pickImg(k,inp){const f=inp.files[0];if(!f)return;PBUSY++;const box=$('#ip_'+k);box.innerHTML='<span class=mu>Mengunggah…</span>';try{const d=await compress(f);const r=await api({action:'imgup',auth:AU,d});if(!r.ok)throw r.err;IMG[r.id]=d;PEND[k]=r.id;box.innerHTML=imgTag(r.id,'max-height:140px;max-width:100%;border-radius:6px')}catch(e){box.innerHTML='<span style="color:var(--er)">Gagal: '+E(e.message||e)+'</span>'}PBUSY--}
@@ -99,7 +115,7 @@ ${API_URL.startsWith('GANTI')?'<p style="color:var(--er)">⚠ URL API belum diis
 async function doLogin(t){const u=$('#lu').value.trim(),p=$('#lp').value;if(!u||!p){$('#le').textContent='Isi username dan password.';return}
 $('#le').textContent='Memeriksa…';
 if(t==='a'){const r=await api({action:'alogin',u,p});if(!r.ok){$('#le').textContent=r.err;return}S=r.S;AU={u,p};snap();status('');adm=true;mode='admin';page='dash';render();if(S.warn)alert(S.warn)}
-else{const r=await api({action:'plogin',u,p});if(!r.ok){$('#le').textContent=r.err;return}TK=r.tk;OFF=(r.now||Date.now())-Date.now();P={...r.pes,pw:p};S={cfg:r.cfg,mapel:r.mapel||[],guru:[],topik:[],soal:[],grp:r.grp,pes:[],tes:r.tes,token:{},hasil:r.hasil};AU=null;mode='peserta';cur=null;render()}}
+else{await wait(Math.random()*LOGIN_JITTER);const r=await api({action:'plogin',u,p});if(!r.ok){$('#le').textContent=r.err;return}TK=r.tk;OFF=(r.now||Date.now())-Date.now();P={...r.pes,pw:p};S={cfg:r.cfg,mapel:r.mapel||[],guru:[],topik:[],soal:[],grp:r.grp,pes:[],tes:r.tes,token:{},hasil:r.hasil};AU=null;mode='peserta';cur=null;render()}}
 const logout=()=>{adm=false;P=null;cur=null;AU=null;TK='';clearInterval(tmr);clearTimeout(pt);S=seed();S.cfg={...PUB};mode='login';render()};
 
 /* ---------- ADMIN / GURU ---------- */
@@ -333,26 +349,26 @@ let act=h&&h.fin?`<span class=tag>Selesai${t.th?' · Nilai '+h.nilai:''}</span>`
 return`<div class=card><b>${E(t.nama)}</b> <span class=tag>${E(mN(t.m))}</span><div class=mu>${E(t.desk||'')} · ${t.durasi} menit · ${t.ids.length} soal</div><div class=row>${act}</div></div>`}).join('')||'<div class=card>Belum ada tes untuk group Anda.</div>')+footH()+'</div>'}
 async function mulai(tid){const t=S.tes.find(x=>x.id===tid);if(t&&t.anti!==false&&document.documentElement.requestFullscreen){try{document.documentElement.requestFullscreen().then(()=>{VIO.fs=true}).catch(()=>{})}catch(e){}}let h=S.hasil.find(x=>x.tes===tid&&x.p===P.id),tk='';
 if(!h&&t.token){tk=prompt('Masukkan token tes:');if(!tk){exitFS();return}}
-busy(true);const r=await api({action:'pstart',tk:TK,tes:tid,token:tk});busy(false);
+busy(true);await wait(Math.random()*LOGIN_JITTER);const r=await api({action:'pstart',tk:TK,tes:tid,token:tk});busy(false);
 if(!r.ok){exitFS();alert(r.err);return}
 VIO.mute=Date.now()+2500;try{history.pushState(null,'',location.href)}catch(e){}
 if(r.now)OFF=r.now-Date.now();r.soal.forEach(q=>{if(!S.soal.some(x=>x.id===q.id))S.soal.push(q);[q.img,...(q.oi||[])].filter(Boolean).forEach(getImg)});
-const i=S.hasil.findIndex(x=>x.id===r.h.id);if(i<0)S.hasil.push(r.h);else S.hasil[i]=r.h;
+{const lc=lsGet(r.h.id);if(lc&&!r.h.fin)r.h.a={...(r.h.a||{}),...lc}}const i=S.hasil.findIndex(x=>x.id===r.h.id);if(i<0)S.hasil.push(r.h);else S.hasil[i]=r.h;
 cur={h:r.h.id,i:0};clearInterval(tmr);tmr=setInterval(tick,1000);render()}
-function tick(){const h=S.hasil.find(x=>x.id===cur?.h);if(!h||h.fin){clearInterval(tmr);return}const t=S.tes.find(x=>x.id===h.tes),r=endT(h,t)-(Date.now()+OFF);if(r<=0){clearInterval(tmr);finP(h,true);return}const e=$('#tm');if(e)e.textContent=Math.floor(r/60000)+':'+String(Math.floor(r/1000)%60).padStart(2,'0')}
-function pushAns(){clearTimeout(pt);const h=S.hasil.find(x=>x.id===cur?.h);if(!h||h.fin)return Promise.resolve();const set=t=>{const e=$('#sv');if(e)e.textContent=t};set('Menyimpan…');
-return api({action:'pans',tk:TK,h:h.id,a:h.a}).then(r=>set(r.ok?'Tersimpan ✓':'Gagal simpan, mencoba lagi…'))}
+function tick(){const h=S.hasil.find(x=>x.id===cur?.h);if(!h||h.fin){clearInterval(tmr);return}const t=S.tes.find(x=>x.id===h.tes),r=endT(h,t)-(Date.now()+OFF);if(r<=0){clearInterval(tmr);if(h.tout)return;h.tout=1;busy(true);$('#ld').textContent='Waktu habis. Mengirim jawaban…';setTimeout(()=>finP(h,true),Math.random()*AUTO_JITTER);return}const e=$('#tm');if(e)e.textContent=Math.floor(r/60000)+':'+String(Math.floor(r/1000)%60).padStart(2,'0')}
+function pushAns(){clearTimeout(pt);PT_AT=0;const h=S.hasil.find(x=>x.id===cur?.h);if(!h||h.fin)return Promise.resolve();const sig=JSON.stringify(h.a);if(h._ls===sig)return Promise.resolve();const set=t=>{const e=$('#sv');if(e)e.textContent=t};set('Menyimpan…');
+return api({action:'pans',tk:TK,h:h.id,a:h.a}).then(r=>{if(r.ok)h._ls=sig;else{clearTimeout(pt);pt=setTimeout(pushAns,15000+Math.random()*15000)}set(r.ok?'Tersimpan ✓':'Gagal simpan, mencoba lagi…')})}
 async function finP(h,auto){clearInterval(tmr);clearTimeout(pt);busy(true);let r=await api({action:'pfin',tk:TK,h:h.id,a:h.a});if(!r.ok)r=await api({action:'pfin',tk:TK,h:h.id,a:h.a});busy(false);
-if(!r.ok){alert('Gagal mengirim jawaban: '+r.err+'\nPeriksa koneksi lalu tekan Selesai lagi.');cur&&(tmr=setInterval(tick,1000));return}
-Object.assign(h,r.h);h.fin=true;exitFS();hideWarn();if(auto)alert('Waktu habis. Jawaban Anda sudah dikirim.');render()}
+if(!r.ok){alert('Gagal mengirim jawaban: '+r.err+'\nPeriksa koneksi lalu tekan Selesai lagi.');h.tout=0;cur&&(tmr=setInterval(tick,1000));return}
+lsDel(h.id);Object.assign(h,r.h);h.fin=true;exitFS();hideWarn();if(auto)alert('Waktu habis. Jawaban Anda sudah dikirim.');render()}
 function examView(){const h=S.hasil.find(x=>x.id===cur.h),t=S.tes.find(x=>x.id===h.tes);if(h.fin){clearInterval(tmr);return`<div class=card><h1>Tes selesai ✔</h1><p>Jawaban Anda sudah tersimpan.</p>${t.th?`<div class=st><b>${h.nilai}</b>Nilai Anda</div>`:''}<div class=row><button onclick="cur=null;render()">Kembali</button></div></div>`}
 const sid=h.ids[cur.i],s=S.soal.find(x=>x.id===sid),pm=h.perm[sid];
 return`<div class="row" style="justify-content:space-between"><b>${E(t.nama)}</b><span><span id=sv class=mu></span> <span class=tag>⏱ <span id=tm>--:--</span></span></span></div>
 <div class=card><div class=mu>Soal ${cur.i+1} dari ${h.ids.length}</div><p style="font-size:16px;white-space:pre-wrap">${E(s.q)}</p>${imgTag(s.img)}${pm.map((o,n)=>`<div class="opt ${h.a[sid]===o?'on':''}" onclick="ans('${sid}',${o})"><b>${'ABCDE'[n]}.</b><span>${E(s.o[o]||'')}${imgTag((s.oi||[])[o],'max-width:100%;max-height:200px;display:block;margin-top:4px;border-radius:6px')}</span></div>`).join('')}
 <div class=row><button class=s onclick="nav(-1)" ${cur.i?'':'disabled'}>← Sebelumnya</button><button class=s onclick="nav(1)" ${cur.i<h.ids.length-1?'':'disabled'}>Berikutnya →</button><button onclick="fin()" style="margin-left:auto">Selesai</button></div></div>
 <div class=card><div class=num>${h.ids.map((i,n)=>`<button class="${n===cur.i?'cur':h.a[i]!==undefined?'a':''}" onclick="cur.i=${n};render()">${n+1}</button>`).join('')}</div></div>`}
-function ans(s,o){S.hasil.find(x=>x.id===cur.h).a[s]=o;render();clearTimeout(pt);pt=setTimeout(pushAns,2500)}
-const nav=d=>{cur.i+=d;render();pushAns()};
+function ans(s,o){const h=S.hasil.find(x=>x.id===cur.h);if(!h||h.tout||h.fin)return;h.a[s]=o;lsSet(h.id,h.a);render();const e=$('#sv');if(e)e.textContent='Tersimpan di perangkat ✓';if(!PT_AT||Date.now()-PT_AT>SYNC_MIN+SYNC_RND+5000){PT_AT=Date.now();clearTimeout(pt);pt=setTimeout(pushAns,SYNC_MIN+Math.random()*SYNC_RND)}}
+const nav=d=>{cur.i+=d;render()};
 function fin(){const h=S.hasil.find(x=>x.id===cur.h),k=h.ids.filter(i=>h.a[i]===undefined).length;VIO.mute=Date.now()+60000;const okc=confirm(k?`Masih ${k} soal belum dijawab. Akhiri tes?`:'Akhiri tes dan kirim jawaban?');VIO.mute=Date.now()+1500;if(okc)finP(h)}
 
 /* ---------- PENGAMAN ANTI-MENYONTEK ---------- */
@@ -378,6 +394,6 @@ window.addEventListener('beforeunload',ev=>{if(antiOn()){ev.preventDefault();ev.
 window.addEventListener('popstate',()=>{if(antiOn()){try{history.pushState(null,'',location.href)}catch(e){}}})}
 function render(){$('#root').innerHTML=mode==='login'?loginView():mode==='admin'?adminView():pesView();if(mode==='peserta'&&cur)tick();hydrate();if(document.body.classList)document.body.classList.toggle('anti',!!antiOn())}
 initAnti();render();
-setInterval(()=>{const a=document.activeElement;if(mode==='admin'&&AU&&!document.hidden&&$('#md').hidden&&['dash','hasil','rekap'].includes(page)&&!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))loadAdmin(true)},30000);
-api({action:'info'}).then(r=>{if(r.ok){PUB=r.cfg;if(mode==='login'&&!(($('#lu')||{}).value)){S.cfg={...PUB};render()}}});
+setInterval(()=>{const a=document.activeElement;if(mode==='admin'&&AU&&!document.hidden&&$('#md').hidden&&['dash','hasil','rekap'].includes(page)&&!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))loadAdmin(true)},90000);
+setTimeout(()=>{api({action:'info'}).then(r=>{if(r.ok){PUB=r.cfg;if(mode==='login'&&!(($('#lu')||{}).value)){S.cfg={...PUB};render()}}})},Math.random()*3000);
 </script></body></html>
