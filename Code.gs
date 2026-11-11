@@ -128,10 +128,26 @@ function putOne(n, row, o) { sh(n).getRange(row, 1, 1, 3).setValues([[o.id, JSON
 
 /* ---------- hasil: akses per baris tanpa membaca seluruh sheet ---------- */
 function hasilRows(pid) { // semua hasil milik satu peserta
-  const s = sh('hasil'), last = s.getLastRow(); if (last < 2) return [];
+  const s = sh('hasil'), c = CacheService.getScriptCache(), ck = 'hp:' + pid;
+  let cached = null; try { const x = c.get(ck); if (x) cached = JSON.parse(x); } catch (e) {}
+  if (cached && cached.length) { // jalur cepat: baca hanya baris yang diingat, lalu pastikan masih milik peserta ini
+    const out = []; let okAll = true;
+    for (const r of cached) {
+      try { const o = JSON.parse(s.getRange(r, 2).getValue()); if (o && o.p === pid) out.push({ row: r, obj: o }); else { okAll = false; break; } } catch (e) { okAll = false; break; }
+    }
+    if (okAll) return out;
+  }
+  const last = s.getLastRow(); if (last < 2) return [];
   const fs = s.getRange(2, 2, last - 1, 1).createTextFinder('"p":"' + pid + '"').findAll(), out = [];
   fs.forEach(f => { try { const o = JSON.parse(f.getValue()); if (o && o.p === pid) out.push({ row: f.getRow(), obj: o }); } catch (e) {} });
+  try { if (out.length) c.put(ck, JSON.stringify(out.map(x => x.row)), 21600); } catch (e) {}
   return out;
+}
+function hasilRowsAdd(pid, row) { // dipanggil saat baris hasil baru dibuat
+  const c = CacheService.getScriptCache(), ck = 'hp:' + pid;
+  let a = []; try { a = JSON.parse(c.get(ck) || '[]'); } catch (e) {}
+  if (a.indexOf(row) < 0) a.push(row);
+  try { c.put(ck, JSON.stringify(a), 21600); } catch (e) {}
 }
 // Ubah satu hasil tanpa kunci global: baca, ubah, cek ulang baris belum berubah, baru tulis (ulang jika bentrok).
 function updHasil(id, fn) {
@@ -328,6 +344,7 @@ function route(b) {
       } finally { lock.releaseLock(); }
       sh('hasil').getRange(row, 1, 1, 3).setValues([[h.id, JSON.stringify(h), summ(h)]]);
       try { cch.put('hr:' + h.id, String(row), 21600); cch.put(mk, h.id + ':' + row, 21600); } catch (e2) {}
+      hasilRowsAdd(pes.id, row);
       return pack(h);
     }
     case 'imgup': {
@@ -479,3 +496,26 @@ function route(b) {
   return err('Aksi tidak dikenal.');
 }
 function clean(a, h) { const o = {}; h.ids.forEach(i => { if (a && a[i] !== undefined && a[i] !== null) o[i] = +a[i]; }); return o; }
+// Hapus SEMUA hasil tes milik peserta dengan nama tertentu (data peserta tetap ada)
+function hapusHasilByNama() {
+  const NAMA = 'LILIH SOLIHAT NURHASANAH';
+  const target = NAMA.trim().toUpperCase();
+  const pid = readRaw('pes')
+    .filter(p => String(p.nama || '').trim().toUpperCase() === target)
+    .map(p => p.id);
+  if (!pid.length) { Logger.log('Peserta tidak ditemukan'); return; }
+
+  const s = sh('hasil'), last = s.getLastRow();
+  if (last < 2) { Logger.log('Sheet hasil kosong'); return; }
+  const v = s.getRange(2, 2, last - 1, 1).getValues();
+  let n = 0;
+  for (let i = v.length - 1; i >= 0; i--) {
+    try {
+      const o = JSON.parse(v[i][0]);
+      if (o && pid.indexOf(o.p) >= 0) { s.deleteRow(i + 2); n++; }
+    } catch (e) {}
+  }
+  pid.forEach(id => CacheService.getScriptCache().remove('hp:' + id));
+  resetCache();
+  Logger.log('Hasil dihapus: ' + n);
+}
