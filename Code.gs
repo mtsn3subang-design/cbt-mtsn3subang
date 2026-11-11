@@ -1,14 +1,13 @@
-/* CBT MTsN 3 Subang – Backend Apps Script (multi mapel & multi guru) — VERSI OPTIMASI BEBAN TINGGI
-   Database: Google Sheets di bawah. Sheet dibuat otomatis saat pertama dipakai.
-   Perubahan utama: cache (CacheService) untuk tabel yang jarang berubah, tanpa kunci global untuk simpan jawaban,
-   pencarian hasil per baris (tidak membaca seluruh sheet), dan kunci hanya sebentar saat mulai tes. */
+/* CBT MTsN 3 Subang – Backend Apps Script (multi mapel & multi guru) — VERSI OPTIMASI BEBAN TINGGI v2
+   Perubahan v2: cache per tes (soal & kunci dipisah), refresh dashboard ringan (ahasil),
+   hapus hasil massal (hdel), perbaikan penanda cache saat hasil dihapus. */
 const SS_ID = '1zWHSga-6ossQvT85ZV_G4jH5SJsxTgCUAH21-XSh-YM';
 const TABLES = ['mapel', 'guru', 'topik', 'soal', 'grp', 'pes', 'tes', 'hasil'];
 const GURU_TABLES = ['topik', 'soal', 'tes', 'hasil'];
 const TZ = 'Asia/Jakarta';
-const CACHE_TTL = 600;            // detik; cache otomatis dibuang saat data diubah lewat aplikasi
-const NOCACHE = { hasil: 1 };      // tabel yang selalu dibaca langsung
-const LOCKED = ['sync', 'gprof', 'imgup', 'imgclean', 'export', 'sinkron']; // aksi yang memakai kunci global
+const CACHE_TTL = 600;
+const NOCACHE = { hasil: 1 };
+const LOCKED = ['sync', 'gprof', 'imgup', 'imgclean', 'export', 'sinkron', 'hdel'];
 
 /* ---------- util ---------- */
 const ok = o => out(Object.assign({ ok: true }, o || {}));
@@ -27,7 +26,7 @@ function sh(n) {
   if (!x) { x = _ss.insertSheet(n); x.getRange('A:C').setNumberFormat('@'); x.getRange(1, 1, 1, 3).setValues([['id', 'data (JSON)', 'ringkas']]); x.setFrozenRows(1); }
   return (_sh[n] = x);
 }
-function ensureRows(s, need) { // pastikan baris sheet cukup (kolom A:C tetap berformat teks)
+function ensureRows(s, need) {
   const mx = s.getMaxRows();
   if (need <= mx) return;
   const add = Math.max(500, need - mx);
@@ -35,7 +34,7 @@ function ensureRows(s, need) { // pastikan baris sheet cukup (kolom A:C tetap be
   s.getRange(mx + 1, 1, add, 3).setNumberFormat('@');
 }
 
-/* ---------- cache berversi (chunk 30 rb karakter, aman untuk batas 100 KB/kunci) ---------- */
+/* ---------- cache berversi (chunk 30 rb karakter) ---------- */
 const newVer = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 function cver(c, name) { let v = c.get('v:' + name); if (!v) { v = newVer(); c.put('v:' + name, v, 21600); } return v; }
 function cbump(name) { try { CacheService.getScriptCache().put('v:' + name, newVer(), 21600); } catch (e) {} }
@@ -62,15 +61,17 @@ function cget(name, loader, ttl, ver) {
     let n = 0;
     for (let i = 0; i < s.length; i += CH, n++) { put[base + ':' + n] = s.slice(i, i + CH); ks.push(base + ':' + n); }
     if (n <= 120) {
-      put[base + ':n'] = String(n); ks.push(base + ':n'); // header terakhir: cache baru dianggap utuh jika header ada
+      put[base + ':n'] = String(n); ks.push(base + ':n');
       for (let i = 0; i < ks.length; i += 40) { const sub = {}; ks.slice(i, i + 40).forEach(k => sub[k] = put[k]); c.putAll(sub, ttl || CACHE_TTL); }
     }
   } catch (e) {}
   return data;
 }
-function resetCache() { // jalankan manual dari editor Apps Script jika Anda mengedit sheet langsung
+function resetCache() { // jalankan manual jika Anda mengedit sheet langsung
   TABLES.forEach(n => cbump('t:' + n)); cbump('kv:cfg'); cbump('kv:token');
 }
+function rmCache(keys) { const c = CacheService.getScriptCache(); for (let i = 0; i < keys.length; i += 100) c.removeAll(keys.slice(i, i + 100)); }
+
 const imgIds = s => [s.img].concat(s.oi || []).filter(Boolean);
 function removeImgs(ids) {
   if (!ids.length) return;
@@ -101,6 +102,16 @@ function readRaw(n) {
 function readT(n) { return NOCACHE[n] ? readRaw(n) : cget('t:' + n, () => readRaw(n)); }
 const soalMap = () => { const m = {}; readT('soal').forEach(s => m[s.id] = s); return m; };
 const tesById = id => readT('tes').find(x => x.id === id) || null;
+
+/* cache per tes: soal untuk siswa (tanpa kunci) dan kunci jawaban (hanya server) */
+function tver() { const c = CacheService.getScriptCache(); return cver(c, 't:soal') + cver(c, 't:tes'); }
+function testPack(T) {
+  return cget('tp:' + T.id, () => { const sm = soalMap(), o = {}; (T.ids || []).forEach(i => { const s = sm[i]; if (s) o[i] = { topik: s.topik, q: s.q, o: s.o, img: s.img || '', oi: s.oi || [] }; }); return o; }, 3600, tver());
+}
+function testKeys(T) {
+  return cget('tk:' + T.id, () => { const sm = soalMap(), o = {}; (T.ids || []).forEach(i => { const s = sm[i]; if (s) o[i] = s.k; }); return o; }, 3600, tver());
+}
+
 function upsert(n, list) {
   if (!list.length) return;
   const s = sh(n), last = s.getLastRow(), idx = {}, add = [];
@@ -126,11 +137,11 @@ function getOne(n, id) {
 }
 function putOne(n, row, o) { sh(n).getRange(row, 1, 1, 3).setValues([[o.id, JSON.stringify(o), summ(o)]]); cbump('t:' + n); }
 
-/* ---------- hasil: akses per baris tanpa membaca seluruh sheet ---------- */
-function hasilRows(pid) { // semua hasil milik satu peserta
+/* ---------- hasil: akses per baris ---------- */
+function hasilRows(pid, trust) {
   const s = sh('hasil'), c = CacheService.getScriptCache(), ck = 'hp:' + pid;
   let cached = null; try { const x = c.get(ck); if (x) cached = JSON.parse(x); } catch (e) {}
-  if (cached && cached.length) { // jalur cepat: baca hanya baris yang diingat, lalu pastikan masih milik peserta ini
+  if (cached && (cached.length || trust)) {
     const out = []; let okAll = true;
     for (const r of cached) {
       try { const o = JSON.parse(s.getRange(r, 2).getValue()); if (o && o.p === pid) out.push({ row: r, obj: o }); else { okAll = false; break; } } catch (e) { okAll = false; break; }
@@ -140,16 +151,15 @@ function hasilRows(pid) { // semua hasil milik satu peserta
   const last = s.getLastRow(); if (last < 2) return [];
   const fs = s.getRange(2, 2, last - 1, 1).createTextFinder('"p":"' + pid + '"').findAll(), out = [];
   fs.forEach(f => { try { const o = JSON.parse(f.getValue()); if (o && o.p === pid) out.push({ row: f.getRow(), obj: o }); } catch (e) {} });
-  try { if (out.length) c.put(ck, JSON.stringify(out.map(x => x.row)), 21600); } catch (e) {}
+  try { c.put(ck, JSON.stringify(out.map(x => x.row)), 21600); } catch (e) {}
   return out;
 }
-function hasilRowsAdd(pid, row) { // dipanggil saat baris hasil baru dibuat
+function hasilRowsAdd(pid, row) {
   const c = CacheService.getScriptCache(), ck = 'hp:' + pid;
   let a = []; try { a = JSON.parse(c.get(ck) || '[]'); } catch (e) {}
   if (a.indexOf(row) < 0) a.push(row);
   try { c.put(ck, JSON.stringify(a), 21600); } catch (e) {}
 }
-// Ubah satu hasil tanpa kunci global: baca, ubah, cek ulang baris belum berubah, baru tulis (ulang jika bentrok).
 function updHasil(id, fn) {
   if (!id) return { miss: true };
   const s = sh('hasil'), c = CacheService.getScriptCache();
@@ -229,15 +239,15 @@ function buildS(w) {
   S.pes = S.pes.map(p => ({ id: p.id, nama: p.nama, g: p.g }));
   return S;
 }
-function score(h, T, sm) {
-  sm = sm || soalMap();
+function score(h, T, keys) {
+  keys = keys || testKeys(T);
   let p = 0;
   h.ids.forEach(i => {
-    const s = sm[i]; if (!s) return;
+    const k = keys[i]; if (k === undefined) return;
     const a = h.a[i];
-    p += (a === undefined || a === null) ? (+T.pk || 0) : (a === s.k ? (+T.pb || 0) : (+T.ps || 0));
+    p += (a === undefined || a === null) ? (+T.pk || 0) : (a === k ? (+T.pb || 0) : (+T.ps || 0));
   });
-  return Math.round(p / (h.ids.length * (+T.pb || 1)) * 1000) / 10; // nilai skala 0-100
+  return Math.round(p / (h.ids.length * (+T.pb || 1)) * 1000) / 10;
 }
 const endMs = (h, T) => { let e = h.mulai + (T.durasi + (h.x || 0)) * 60000; if (T.selesai) e = Math.min(e, new Date(T.selesai).getTime() + (h.x || 0) * 60000); return e; };
 
@@ -262,15 +272,17 @@ function sync(a, ch) {
       allowed = o => t === 'topik' ? myM.indexOf(o.m) >= 0 : t === 'soal' ? !!topikOk[o.topik] : t === 'tes' ? myM.indexOf(o.m) >= 0 : !!tesOk[o.tes];
     }
     let list = up.filter(o => allowed(o) && (!ex[o.id] || allowed(ex[o.id])));
-    if (t === 'hasil') { // diubah per baris agar tidak menimpa jawaban siswa yang sedang tersimpan
+    if (t === 'hasil') {
       const tesAll = {}; readT('tes').forEach(x => tesAll[x.id] = x);
-      const sm = soalMap();
       list.forEach(r => updHasil(String(r.id || ''), h => {
         if (!allowed(h)) return false;
         h.fin = !!(h.fin || r.fin); h.x = +r.x || 0;
-        if (h.fin && tesAll[h.tes]) h.nilai = score(h, tesAll[h.tes], sm);
+        if (h.fin && tesAll[h.tes]) h.nilai = score(h, tesAll[h.tes]);
       }));
-      rm.forEach(id => { const g = getOne('hasil', String(id)); if (g && allowed(g.obj)) sh('hasil').deleteRow(g.row); });
+      rm.forEach(id => {
+        const g = getOne('hasil', String(id));
+        if (g && allowed(g.obj)) { sh('hasil').deleteRow(g.row); const o = g.obj; rmCache(['st:' + o.p + ':' + o.tes, 'hp:' + o.p, 'hr:' + o.id, 'd:hasilall:1:n']); }
+      });
       continue;
     }
     const rmOk = rm.filter(id => ex[id] && allowed(ex[id]));
@@ -301,46 +313,71 @@ function route(b) {
   switch (b.action) {
     case 'info': return ok({ cfg: cfgPub() });
     case 'alogin': { const w = who({ u: b.u, p: b.p }); return w ? ok({ S: buildS(w) }) : err('Username atau password salah.'); }
+    case 'ahasil': { // refresh ringan dashboard (cache 20 detik)
+      const w = who({ u: b.u, p: b.p }); if (!w) return err('Login tidak valid.');
+      let h = cget('hasilall', () => readRaw('hasil'), 20, '1');
+      if (w.role === 'guru') { const m = w.g.m || [], okT = {}; readT('tes').forEach(t => { if (m.indexOf(t.m) >= 0) okT[t.id] = 1; }); h = h.filter(x => okT[x.tes]); }
+      return ok({ hasil: h });
+    }
+    case 'hdel': { // hapus banyak hasil sekaligus
+      const w = who(b.auth); if (!w) return err('Login tidak valid.');
+      const set = {}; (b.ids || []).forEach(i => set[String(i)] = 1);
+      if (!Object.keys(set).length) return err('Tidak ada data dipilih.');
+      const okT = {}; readT('tes').forEach(t => { if (w.role === 'admin' || (w.g.m || []).indexOf(t.m) >= 0) okT[t.id] = 1; });
+      const s = sh('hasil'), last = s.getLastRow(); if (last < 2) return ok({ n: 0 });
+      const v = s.getRange(2, 1, last - 1, 2).getValues(), rows = [], keys = ['d:hasilall:1:n'];
+      v.forEach((r, i) => {
+        if (!set[String(r[0])]) return;
+        let o; try { o = JSON.parse(r[1]); } catch (e) { return; }
+        if (!okT[o.tes]) return;
+        rows.push(i + 2); keys.push('st:' + o.p + ':' + o.tes, 'hp:' + o.p, 'hr:' + o.id);
+      });
+      let e = rows.length - 1; // hapus dari bawah; baris berurutan digabung
+      while (e >= 0) { let st = e; while (st > 0 && rows[st - 1] === rows[st] - 1) st--; s.deleteRows(rows[st], e - st + 1); e = st - 1; }
+      PropertiesService.getScriptProperties().deleteProperty('HROW');
+      rmCache(keys);
+      return ok({ n: rows.length });
+    }
     case 'sync': return sync(b.auth, b.ch || {});
     case 'plogin': {
       const pes = readT('pes').find(x => x.u === b.u && x.p === b.p);
       if (!pes) return err('Username atau password salah.');
       return ok({ now: Date.now(), tk: sign(pes), pes: { id: pes.id, u: pes.u, nama: pes.nama, g: pes.g }, cfg: cfgPub(), grp: readT('grp'), mapel: readT('mapel'),
-        tes: readT('tes').filter(t => (t.g || []).indexOf(pes.g) >= 0), hasil: hasilRows(pes.id).map(x => x.obj) });
+        tes: readT('tes').filter(t => (t.g || []).indexOf(pes.g) >= 0), hasil: hasilRows(pes.id, true).map(x => x.obj) });
     }
     case 'pstart': {
       const pes = pesFrom(b.tk); if (!pes) return err('Sesi tidak valid, silakan login ulang.');
       const T = tesById(b.tes); if (!T || (T.g || []).indexOf(pes.g) < 0) return err('Tes tidak tersedia.');
-      const now = Date.now(), sm = soalMap();
-      const pack = h => ok({ now: Date.now(), h, soal: h.ids.filter(i => sm[i]).map(i => ({ id: i, topik: sm[i].topik, q: sm[i].q, o: sm[i].o, img: sm[i].img || '', oi: sm[i].oi || [] })) });
-      let ex = hasilRows(pes.id).find(x => x.obj.tes === T.id);
+      const now = Date.now(), P = testPack(T);
+      const pack = h => ok({ now: Date.now(), h, soal: h.ids.filter(i => P[i]).map(i => Object.assign({ id: i }, P[i])) });
+      let ex = hasilRows(pes.id, true).find(x => x.obj.tes === T.id);
       if (ex) { if (ex.obj.fin) return err('Tes sudah selesai.'); return pack(ex.obj); }
       if (T.mulai && now < new Date(T.mulai).getTime()) return err('Tes belum dibuka.');
       if (T.selesai && now > new Date(T.selesai).getTime()) return err('Tes sudah ditutup.');
       if (T.token) { const tk = tokMap()[T.m] || {}; if (!b.token || String(b.token).trim().toUpperCase() !== tk.c || tk.d !== today()) return err('Token salah atau kedaluwarsa.'); }
       if (!T.ids || !T.ids.length) return err('Soal belum tersedia.');
-      const ids = (T.as ? shuf(T.ids) : T.ids.slice()).filter(i => sm[i]), perm = {};
-      ids.forEach(i => { const n = sm[i].o.map((_, k) => k); perm[i] = T.aj ? shuf(n) : n; });
+      const ids = (T.as ? shuf(T.ids) : T.ids.slice()).filter(i => P[i]), perm = {};
+      ids.forEach(i => { const n = P[i].o.map((_, k) => k); perm[i] = T.aj ? shuf(n) : n; });
       const h = { id: uid(), tes: T.id, p: pes.id, mulai: now, x: 0, fin: false, nilai: 0, a: {}, ids, perm };
-      // kunci HANYA untuk memesan nomor baris (±0,1 dtk); penulisan data dilakukan di luar kunci
+      // kunci HANYA untuk memesan nomor baris; penulisan data di luar kunci
       const cch = CacheService.getScriptCache(), mk = 'st:' + pes.id + ':' + T.id;
       const lock = LockService.getScriptLock();
       if (!lock.tryLock(25000)) return err('Server sibuk, coba lagi.');
       let row;
       try {
-        const m = cch.get(mk); // penanda: siswa ini sudah/sedang dibuatkan hasil (permintaan ganda/ulang)
+        const m = cch.get(mk);
         if (m) {
           const pr0 = m.split(':'), v = sh('hasil').getRange(+pr0[1], 1, 1, 2).getValues()[0];
-          if (String(v[0]) !== pr0[0]) return err('Server sibuk, coba lagi.'); // masih ditulis oleh permintaan pertama
+          if (String(v[0]) !== pr0[0]) return err('Server sibuk, coba lagi.');
           let eo = null; try { eo = JSON.parse(v[1]); } catch (e3) {}
           if (eo) { if (eo.fin) return err('Tes sudah selesai.'); return pack(eo); }
         }
         const s = sh('hasil'), pr = PropertiesService.getScriptProperties();
         const last = s.getLastRow(), pend = +pr.getProperty('HROW') || 0;
-        row = ((pend > last && pend - last <= 60) ? pend : last) + 1; // 60 = batas wajar baris yang sedang ditulis
+        row = ((pend > last && pend - last <= 60) ? pend : last) + 1;
         ensureRows(s, row);
         pr.setProperty('HROW', String(row));
-        cch.put(mk, h.id + ':' + row, 30); // sementara 30 dtk; jika penulisan gagal, otomatis kedaluwarsa
+        cch.put(mk, h.id + ':' + row, 30);
       } finally { lock.releaseLock(); }
       sh('hasil').getRange(row, 1, 1, 3).setValues([[h.id, JSON.stringify(h), summ(h)]]);
       try { cch.put('hr:' + h.id, String(row), 21600); cch.put(mk, h.id + ':' + row, 21600); } catch (e2) {}
@@ -436,7 +473,7 @@ function route(b) {
       const g = r.obj; g.nama = b.n || g.nama; g.nip = b.nip || ''; if (b.p) g.p = b.p;
       putOne('guru', r.row, g); return ok();
     }
-    case 'pans': { // tanpa kunci global: hanya mengubah baris milik siswa itu
+    case 'pans': {
       const pes = pesFrom(b.tk); if (!pes) return err('Sesi tidak valid.');
       let bad = '';
       const r = updHasil(String(b.h || ''), h => {
@@ -489,33 +526,26 @@ function route(b) {
       if (r.miss) return err('Data tidak ditemukan.');
       if (r.busy) return err('Server sibuk, coba lagi.');
       if (bad) return err(bad);
-      if (r.ok) updHasil(id, h => (h.fin ? false : apply(h))); // verifikasi: pastikan tidak tertimpa autosave yang terlambat
+      if (r.ok) updHasil(id, h => (h.fin ? false : apply(h)));
       return ok({ h: res });
     }
   }
   return err('Aksi tidak dikenal.');
 }
 function clean(a, h) { const o = {}; h.ids.forEach(i => { if (a && a[i] !== undefined && a[i] !== null) o[i] = +a[i]; }); return o; }
-// Hapus SEMUA hasil tes milik peserta dengan nama tertentu (data peserta tetap ada)
-function hapusHasilByNama() {
-  const NAMA = 'LILIH SOLIHAT NURHASANAH';
-  const target = NAMA.trim().toUpperCase();
-  const pid = readRaw('pes')
-    .filter(p => String(p.nama || '').trim().toUpperCase() === target)
-    .map(p => p.id);
-  if (!pid.length) { Logger.log('Peserta tidak ditemukan'); return; }
 
-  const s = sh('hasil'), last = s.getLastRow();
-  if (last < 2) { Logger.log('Sheet hasil kosong'); return; }
-  const v = s.getRange(2, 2, last - 1, 1).getValues();
-  let n = 0;
+// Hapus SEMUA hasil tes milik peserta dengan nama tertentu (jalankan manual dari editor)
+function hapusHasilByNama() {
+  const NAMA = 'LILIH SOLIHAT NURHASANAH', target = NAMA.trim().toUpperCase();
+  const pid = readRaw('pes').filter(p => String(p.nama || '').trim().toUpperCase() === target).map(p => p.id);
+  if (!pid.length) { Logger.log('Peserta tidak ditemukan'); return; }
+  const s = sh('hasil'), last = s.getLastRow(); if (last < 2) { Logger.log('Sheet hasil kosong'); return; }
+  const v = s.getRange(2, 2, last - 1, 1).getValues(), keys = ['d:hasilall:1:n']; let n = 0;
   for (let i = v.length - 1; i >= 0; i--) {
-    try {
-      const o = JSON.parse(v[i][0]);
-      if (o && pid.indexOf(o.p) >= 0) { s.deleteRow(i + 2); n++; }
-    } catch (e) {}
+    try { const o = JSON.parse(v[i][0]); if (o && pid.indexOf(o.p) >= 0) { keys.push('st:' + o.p + ':' + o.tes, 'hr:' + o.id); s.deleteRow(i + 2); n++; } } catch (e) {}
   }
-  pid.forEach(id => CacheService.getScriptCache().remove('hp:' + id));
-  resetCache();
+  pid.forEach(id => keys.push('hp:' + id));
+  PropertiesService.getScriptProperties().deleteProperty('HROW');
+  rmCache(keys); resetCache();
   Logger.log('Hasil dihapus: ' + n);
 }
